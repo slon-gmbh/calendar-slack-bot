@@ -311,8 +311,11 @@ When `--scheduled` runs, the bot:
 - GitHub Actions cron is not guaranteed to run at exact time (can be delayed by minutes)
 - **Forward-looking tolerance only:** Workflow can run late (up to 5 min) but not early
   - Prevents duplicate posts if workflow runs before scheduled time
-  - Catches delayed runs within reasonable window
-  - If GitHub Actions delays > 5 minutes, digest will be skipped (logged as missed)
+  - Catches delayed runs within reasonable window (5 min covers 99% of GitHub Actions delays)
+  - **If GitHub Actions delays > 5 minutes:** Digest will be skipped for that run, logged as missed
+    - Next scheduled run will post digest normally
+    - This is acceptable for MVP - GitHub Actions delays > 5 min are rare
+    - v2 consideration: Increase tolerance to 15-30 min, or implement catch-up logic
 - **Implementation:** `const minutesAfterSchedule = (currentTime - scheduleTime) / 60000; return minutesAfterSchedule >= 0 && minutesAfterSchedule <= 5;`
 
 **MVP limitation:**
@@ -1144,8 +1147,11 @@ https://api.github.com/repos/OWNER/REPO/dispatches
 **CI Integration:**
 - Tests run in both workflows before main script
 - Failing tests block the workflow - broken logic never reaches Slack
-- Tests must complete in under 5 seconds
-- No network calls in tests
+- Tests must complete in under 5 seconds (Node.js `node:test` default timeout)
+  - If tests timeout or hang, the workflow fails (GitHub Actions 6-hour job timeout)
+  - Node's test runner will fail individual tests that hang
+  - This is acceptable for MVP - tests are pure functions with no async operations
+- No network calls in tests (all synchronous, deterministic)
 
 ### Integration Testing (Manual with Dry-Run)
 
@@ -1256,7 +1262,10 @@ The public repository is a clean template with no instance-specific data. Users 
 
 **Intended usage models:**
 
-- **Personal/team use:** Fork this repo privately, add your four GitHub Secrets (`CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`), and you have your own running instance
+- **Personal/team use:** Create a **completely separate private repository** (not a GitHub fork), copy the code, add your four GitHub Secrets (`CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`), and you have your own running instance
+  - **Important:** Do NOT use GitHub's "Fork" button - forks of public repos are public by default and will expose your config
+  - Instead: create a new private repo, clone this public repo, push to your private repo
+  - This keeps your configuration and calendar data private
 - **Contributing:** Work against the public repo, never commit real config
 - **Future hosted service:** Multi-tenant hosted version is a known long-term direction, tracked as v2+ consideration
 
