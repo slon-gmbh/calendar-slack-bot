@@ -215,12 +215,12 @@ Each module is independently readable with a single, focused responsibility.
   - Format: `"<day> <HH:MM>"` where day is one of: `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`, `weekdays` (Mon-Fri), `weekends` (Sat-Sun), `daily` (every day)
   - Time is in 24-hour format, interpreted as UTC
   - Alternative: raw cron expression (e.g., `"0 18 * * 0"`) for advanced scheduling
-  - **Runtime filtering:** The bot checks this field at runtime when `--scheduled` runs and only posts digests to channels whose schedule matches the current time (within ~5 min tolerance)
-  - **MVP limitation:** Custom schedule times require adding a matching cron expression to `.github/workflows/scheduled.yml`. Default cron covers `sunday 18:00` and `weekdays 08:00`.
+  - **Runtime filtering:** The bot checks this field at runtime when `--scheduled` runs and only posts digests to channels whose schedule matches the current time (within ±30 min tolerance)
+  - **Hourly polling:** The workflow runs every hour, checking all channel schedules. Any valid schedule time will work without editing workflow files.
 - `daily_digest_schedule` (string or false, optional): Daily digest schedule (e.g., `"weekdays 08:00"`), default `false` (disabled)
   - Same format as `digest_schedule`
   - Common values: `"weekdays 08:00"` (Monday-Friday at 08:00 UTC), `"daily 09:00"` (every day at 09:00 UTC)
-  - **Runtime filtering:** Same as `digest_schedule` - checked at runtime, only posts to matching channels
+  - **Runtime filtering:** Same as `digest_schedule` - checked at runtime with ±30 min tolerance, only posts to matching channels
 - `show_empty_days` (boolean, optional): Show days with no events, default `false`
 - `notifications` (string or object, optional): Controls change notification behavior
   - `"all"` (default): every change posted immediately after debounce
@@ -292,37 +292,36 @@ When `--scheduled` runs, the bot:
 1. **Gets current UTC time** (e.g., "2026-03-30T18:02:35Z" = Sunday 18:02 UTC)
 2. **For each channel:**
    - Parse `digest_schedule` and `daily_digest_schedule` from config
-   - Check if current time matches schedule within ~5 minute tolerance window
-   - Tolerance accounts for GitHub Actions startup delay and cron schedule drift
+   - Check if current time matches schedule within ±30 minute tolerance window
+   - Tolerance accounts for hourly polling and GitHub Actions delays
 3. **Matching logic:**
    - Day match: current day of week matches schedule day (or current day is in schedule day range for "weekdays"/"weekends"/"daily")
-   - Time match: **`schedule_time <= current_time <= schedule_time + 5 minutes`**
-     - Schedule time must be in the past or now
-     - Current time must be within 5 minutes after schedule time
-   - Example: schedule is "sunday 18:00", current time is Sunday 18:03 → **match** (3 min after schedule)
-   - Example: schedule is "weekdays 08:00", current time is Monday 08:04 → **match** (4 min after schedule)
-   - Example: schedule is "sunday 18:00", current time is Sunday 17:58 → **no match** (schedule is in the future)
-   - Example: schedule is "sunday 18:00", current time is Sunday 18:06 → **no match** (more than 5 min after schedule)
-   - Example: schedule is "weekdays 08:00", current time is Saturday 08:01 → **no match** (wrong day)
-4. **If match:** Post digest to this channel
+   - Time match: **`abs(current_time - schedule_time) <= 30 minutes`**
+     - Current time can be up to 30 minutes before or after schedule time
+   - Example: schedule is "sunday 18:00", current time is Sunday 18:15 → **match** (15 min after)
+   - Example: schedule is "weekdays 08:00", current time is Monday 07:45 → **match** (15 min before)
+   - Example: schedule is "sunday 18:00", current time is Sunday 18:31 → **no match** (>30 min after)
+   - Example: schedule is "sunday 18:00", current time is Sunday 17:29 → **no match** (>30 min before)
+   - Example: schedule is "weekdays 08:00", current time is Saturday 08:00 → **no match** (wrong day)
+   - **Duplicate prevention:** Track last posted digest time per channel in cache, skip if already posted within last 55 minutes (prevents double-posting if workflow runs twice in same tolerance window)
+4. **If match:** Post digest to this channel (if not already posted recently)
 5. **If no match:** Skip this channel silently
 
 **Tolerance window rationale:**
-- GitHub Actions cron is not guaranteed to run at exact time (can be delayed by minutes)
-- **Forward-looking tolerance only:** Workflow can run late (up to 5 min) but not early
-  - Prevents duplicate posts if workflow runs before scheduled time
-  - Catches delayed runs within reasonable window (5 min covers 99% of GitHub Actions delays)
-  - **If GitHub Actions delays > 5 minutes:** Digest will be skipped for that run, logged as missed
-    - Next scheduled run will post digest normally
-    - This is acceptable for MVP - GitHub Actions delays > 5 min are rare
-    - v2 consideration: Increase tolerance to 15-30 min, or implement catch-up logic
-- **Implementation:** `const minutesAfterSchedule = (currentTime - scheduleTime) / 60000; return minutesAfterSchedule >= 0 && minutesAfterSchedule <= 5;`
+- **Hourly polling model:** Workflow runs every hour (`0 * * * *`), bot checks all channels on each run
+- **±30 minute tolerance:** Ensures any schedule time is caught within reasonable window
+  - Example: schedule is 18:00, workflow runs at 18:00 → exact match
+  - Example: schedule is 18:30, workflow runs at 19:00 → caught (30 min after)
+  - Example: schedule is 17:45, workflow runs at 18:00 → caught (15 min after)
+- **No operational burden:** Any valid schedule in config will work automatically, no workflow file edits needed
+- **Trade-off:** More frequent workflow runs (24/day instead of 7/week), but removes all manual cron configuration
+- **Implementation:** `const minutesDiff = Math.abs((currentTime - scheduleTime) / 60000); return minutesDiff <= 30;`
 
-**MVP limitation:**
-- The workflow cron must cover the times specified in channel schedules
-- Default cron: `0 18 * * 0` and `0 8 * * 1-5` covers "sunday 18:00" and "weekdays 08:00"
-- Custom times like "friday 17:00" require adding `0 17 * * 5` to workflow cron
-- Future v2: dynamic cron generation or more frequent polling (e.g., hourly) with wider tolerance
+**Benefits of hourly polling:**
+- Channels can use any schedule time without editing workflow file
+- Simple, predictable model for maintainers
+- Wide tolerance window prevents missed digests from GitHub Actions delays
+- Duplicate prevention via cache ensures no double-posting
 
 ## Cache Keys and Structure
 
@@ -396,6 +395,31 @@ When `--scheduled` runs, the bot:
 - Deleted after bundled notification is posted
 - Missing cache triggers immediate posting (cold start, no debounce)
 
+### Last Digest Timestamp Cache
+
+**Key format:** `last-digest-{channel-id}-{digest-type}`
+- `<channel-id>` is the Slack channel ID
+- `<digest-type>` is either `weekly` or `daily`
+- Example: `last-digest-C01234TEAM-weekly` or `last-digest-C01234TEAM-daily`
+
+**Value structure:**
+```json
+{
+  "timestamp": "2026-03-25T18:00:00Z",
+  "digest_type": "weekly"
+}
+```
+
+**Cache behavior:**
+- Updated after every digest is posted to a channel
+- Checked during schedule matching to prevent duplicate digests
+- If last digest was posted within 55 minutes, skip posting (prevents double-posting if workflow runs twice within tolerance window)
+- Missing cache means no recent digest, safe to post
+
+**Purpose:**
+- Prevents duplicate digests when hourly polling with ±30 min tolerance could match same schedule multiple times
+- Example: schedule is 18:00, workflow runs at 17:45 (within tolerance) and again at 18:00 (within tolerance) → only posts once
+
 ## Nextcloud Webhook Payload
 
 **Problem:** Nextcloud's CalDAV webhook payload format varies by version and configuration. Rather than hardcoding assumptions, the implementation must be flexible.
@@ -410,13 +434,11 @@ When `--scheduled` runs, the bot:
 2. **Parsing strategy:**
    - Try multiple field name variations (case-insensitive)
    - Extract calendar identifier if present
-   - **Map calendar identifier to config calendar ID:**
-     1. Try exact match first (case-sensitive): payload `"team-calendar"` matches config key `"team-calendar"`
-     2. If no exact match, try case-insensitive exact match
-     3. If still no match, try substring match: payload contains config key or vice versa
-     4. **Tie-breaking for multiple substring matches:** Use shortest matching config key (most specific)
-        - Example: payload `"team"` matches both `"team-calendar"` and `"team-standup"` → use `"team-calendar"` (shorter, equally specific) OR first alphabetically if same length
-        - If truly ambiguous → log warning, fall back to full refresh
+   - **Map calendar identifier to config calendar ID (exact match only):**
+     1. Try exact match (case-sensitive): payload `"team-calendar"` matches config key `"team-calendar"`
+     2. If no exact match, try case-insensitive exact match: payload `"Team-Calendar"` matches config key `"team-calendar"`
+     3. If still no match → log warning with parsed calendar ID, fall back to full refresh
+   - **No substring matching:** Simpler, safer, no ambiguity. If payload doesn't exactly match a config key, full refresh ensures correctness.
    - If parsing succeeds and calendar is recognized → update that calendar only
    - If parsing fails or calendar not recognized → log warning, fall back to full refresh (fetch all calendars)
 
@@ -500,43 +522,33 @@ The `node-ical` library parses iCalendar data and provides recurring event infor
 
 **Code location:** `src/caldav.js` - `expandRecurringEvents(events, startDate, endDate)` function
 
-**Implementation approach (priority order):**
+**Implementation requirement:**
 
-1. **First: Check node-ical documentation** for built-in recurring event expansion
-   - Look for methods like `expand()`, `occurrencesBetween()`, or similar
-   - If found and working: use the built-in method (simplest)
+Recurring events must be expanded into individual instances within the requested date range. For example, "Team Standup every Monday at 9am" must appear as separate Monday instances in the digest, not as a single recurring event.
 
-2. **If no built-in expansion:** Check if `node-ical` exposes RRULE objects
-   - `node-ical` internally uses `rrule.js` library
-   - If `event.rrule` is an RRule object: use `event.rrule.between(startDate, endDate)`
-   - This is the most likely scenario based on common iCalendar library patterns
+**Approach:**
 
-3. **If neither works:** Add `rrule` package as separate dependency
-   - Parse RRULE strings from event data
-   - Create RRule objects manually: `new RRule({ ... })`
-   - Use `rrule.between(startDate, endDate)` for expansion
-   - This adds one dependency but guarantees recurring event support
+Use `node-ical`'s built-in RRULE support (the library uses `rrule.js` internally):
 
-4. **Worst case fallback:** Show recurring events as single entries with "(recurring)" label
-   - Log warning that recurring expansion failed
-   - This is acceptable for initial deployment if libraries don't cooperate
-   - Can be fixed post-deployment once real calendar data reveals issues
+1. **Parse calendar with node-ical:** `const events = await ical.async.fromURL(caldavUrl, options)`
+2. **Check for recurring events:** If `event.rrule` exists (RRULE object), event is recurring
+3. **Expand recurring events:** Use `event.rrule.between(startDate, endDate)` to get occurrences
+4. **Create instance events:** For each occurrence, create a new event object with the occurrence's start/end times, merged with original event's title, location, description
 
-**Decision criteria during implementation:**
-- Try approach 1 first (spend <30 min investigating)
-- If approach 1 fails, try approach 2 (spend <1 hour)
-- If approach 2 fails, implement approach 3 (guaranteed to work)
-- Approach 4 is only if approaches 1-3 all fail catastrophically (unlikely)
+**Fallback for complex RRULE patterns:**
+- If a specific RRULE pattern fails to expand or produces invalid results, log a warning and show the base event only with a "(recurring)" label
+- This is acceptable for MVP - most team calendars use simple recurring patterns (daily, weekly, monthly) that are well-supported
+- Complex patterns (e.g., "every 2nd Tuesday except holidays") can be handled in v2 if needed
 
-**The critical requirement:** Weekly recurring events (e.g., "Team Standup every Monday at 9am") must appear as individual instances in the digest, not as a single recurring event. Approaches 1-3 all achieve this. This is essential for team calendar usability.
+**The critical requirement:** This is essential for team calendar usability. A weekly standup must appear every day it occurs, not once as "recurring event."
 
 ## Data Flows
 
 ### Flow 1: Weekly/Daily Digest (Scheduled with Runtime Filtering)
 
 1. **GitHub Actions cron triggers** `.github/workflows/scheduled.yml`
-   - Two cron expressions: `0 18 * * 0` (Sunday 18:00 UTC) and `0 8 * * 1-5` (weekdays 08:00 UTC)
-   - These are polling intervals, not the actual schedule - the bot wakes up to check if any channels need digests
+   - Single cron expression: `0 * * * *` (every hour on the hour, UTC)
+   - **Hourly polling model:** Bot wakes up every hour and checks which channels need digests based on their configured schedules
    - Calls `node src/bot.js --scheduled` (runtime filtering mode)
    - Manual trigger via `workflow_dispatch` with `digest_type` input (choice: weekly/daily/scheduled) for testing
 
@@ -881,11 +893,10 @@ Run: https://github.com/owner/calendar-slack-bot/actions/runs/123456
 
 **Triggers:**
 - `schedule`:
-  - `cron: '0 18 * * 0'` (Sunday 18:00 UTC)
-  - `cron: '0 8 * * 1-5'` (Weekdays 08:00 UTC)
-  - **Note:** These are polling intervals. The bot wakes up and checks which channels need digests via runtime filtering.
-  - **Note:** Times are UTC - maintainers in other timezones must adjust accordingly
-  - **MVP limitation:** Custom schedule times require adding matching cron expressions here
+  - `cron: '0 * * * *'` (every hour on the hour, UTC)
+  - **Hourly polling model:** Bot wakes up every hour and checks all channel schedules via runtime filtering with ±30 min tolerance
+  - **Note:** Times are UTC - channel schedule times in config must be specified in UTC
+  - **Benefit:** Any valid schedule time in config will work automatically, no workflow file edits needed
 - `workflow_dispatch`:
   - `digest_type` input (choice: weekly/daily/scheduled)
     - `scheduled` - runtime filtering mode (normal behavior, checks each channel's schedule)
@@ -1262,14 +1273,24 @@ The public repository is a clean template with no instance-specific data. Users 
 
 **Intended usage models:**
 
-- **Personal/team use:** Create a **completely separate private repository** (not a GitHub fork), copy the code, add your four GitHub Secrets (`CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`), and you have your own running instance
-  - **Important:** Do NOT use GitHub's "Fork" button - forks of public repos are public by default and will expose your config
-  - Instead: create a new private repo, clone this public repo, push to your private repo
-  - This keeps your configuration and calendar data private
+- **Personal/team use (one-time template copy):**
+  - This is a **template repository**, not meant to be forked
+  - Create a **completely separate private repository** (not a GitHub fork):
+    1. Create a new private repo on GitHub
+    2. Clone this public template repo locally: `git clone https://github.com/OWNER/calendar-slack-bot.git`
+    3. Change remote to your private repo: `git remote set-url origin https://github.com/YOUR-ORG/your-private-calendar-bot.git`
+    4. Push to your private repo: `git push -u origin main`
+  - Add your four GitHub Secrets: `CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`
+  - Your instance is now isolated and private
+  - **Trade-off: Upstream updates must be applied manually**
+    - Monitor the public template repo for important updates or bug fixes
+    - Review changes in public repo commits and cherry-pick relevant updates to your private repo
+    - Automated upstream sync is a v2 consideration
+    - This manual process is acceptable for MVP given the security requirement of private config
 - **Contributing:** Work against the public repo, never commit real config
 - **Future hosted service:** Multi-tenant hosted version is a known long-term direction, tracked as v2+ consideration
 
-This keeps the public repo clean while allowing users to run their own private instances with their own calendars, channels, and settings.
+This model keeps the public repo clean (no user data) while allowing users to run isolated private instances. The manual update trade-off is explicit and acceptable for MVP.
 
 ## Future Considerations (v2)
 
@@ -1351,11 +1372,14 @@ The README must prominently document:
    - Step-by-step setup instructions for configuring calendar webhooks
    - Warning that the bot will appear to work for scheduled digests but silently fail for real-time notifications without this setup
 
-2. **Usage model:**
-   - Fork this repo privately (public fork exposes your config)
+2. **Usage model (template repository):**
+   - This is a template repo - create a separate private repo (not a GitHub fork)
+   - Step-by-step instructions for cloning template and pushing to private repo
    - Add four GitHub Secrets: `CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`
    - Copy `config.example.json`, fill in your values, paste as `CONFIG_JSON` secret
    - Workflows run automatically on schedule and webhook triggers
+   - **Important:** Explain the upstream update trade-off (manual cherry-picking, acceptable for MVP)
+   - **Important:** Explain the hourly polling model (workflow runs every hour, checks channel schedules with ±30 min tolerance, any schedule time works automatically)
 
 3. **Slack setup:**
    - Create a Slack app with required scopes: `canvases:write`, `canvases:read`, `chat:write`
