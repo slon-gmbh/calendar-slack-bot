@@ -1,0 +1,20 @@
+{
+  "name": "calendar-slack-bot",
+  "version": "1.0.0",
+  "description": "GitHub Actions-based Slack bot bridging Nextcloud CalDAV with Slack",
+  "main": "src/bot.js",
+  "scripts": {
+    "test": "node --test test/**/*.test.js"
+  },
+  "keywords": ["slack", "calendar", "caldav", "nextcloud", "github-actions"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "node-ical": "^0.18.0",
+    "@slack/web-api": "^7.0.0",
+    "@actions/cache": "^3.0.0"
+  }
+}
