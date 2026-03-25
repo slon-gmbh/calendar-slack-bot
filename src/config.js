@@ -48,6 +48,16 @@ function validateConfig(config) {
   const resolved = JSON.parse(JSON.stringify(config)); // deep clone
   resolveEnvVars(resolved);
 
+  // Validate calendar structure
+  for (const [calId, calendar] of Object.entries(resolved.calendars)) {
+    if (!calendar.caldav_url) {
+      throw new Error(`Config error: calendar '${calId}' missing required field "caldav_url"`);
+    }
+    if (!calendar.name) {
+      throw new Error(`Config error: calendar '${calId}' missing required field "name"`);
+    }
+  }
+
   // Validate calendar references
   for (const channel of resolved.channels) {
     if (!channel.id) {
@@ -66,6 +76,11 @@ function validateConfig(config) {
           `Config error: channel '${channel.id}' references calendar '${calId}' which is not defined in calendars`
         );
       }
+    }
+
+    // Validate channel-specific locale if present
+    if (channel.locale && !/^[a-z]{2}(-[A-Z]{2})?$/.test(channel.locale)) {
+      throw new Error(`Config error: invalid locale '${channel.locale}' in channel '${channel.id}'`);
     }
 
     // Validate schedule format if present

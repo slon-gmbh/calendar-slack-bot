@@ -52,6 +52,22 @@ test('validateConfig should resolve environment variables', () => {
   delete process.env.TEST_VAR;
 });
 
+test('validateConfig should reject unset environment variables', () => {
+  const config = {
+    locale: 'en-US',
+    caldav_credentials: {
+      username: '${UNSET_VAR}',
+      password: 'test'
+    },
+    calendars: {},
+    channels: []
+  };
+  assert.throws(
+    () => validateConfig(config),
+    /UNSET_VAR environment variable is not set/
+  );
+});
+
 test('validateConfig should reject invalid schedule format', () => {
   const invalidConfig = {
     locale: 'en-US',
