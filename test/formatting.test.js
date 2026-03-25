@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   renderWeekView,
+  renderDailyView,
   renderChangeNotification,
   renderBundledNotification,
   renderCanvasContent,
@@ -158,4 +159,72 @@ test('renderBundledNotification should group multiple changes by type', () => {
   assert.match(result, /New Meeting/);
   assert.match(result, /Cancelled Event/);
   assert.match(result, /Moved Meeting/);
+});
+
+test('renderDailyView should use Today/Tomorrow labels', () => {
+  const now = new Date();
+  const todayEvents = [
+    {
+      id: 'e1',
+      title: 'Morning Meeting',
+      start: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0),
+      end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0),
+      isAllDay: false,
+      calendarName: 'Work'
+    }
+  ];
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const tomorrowEvents = [
+    {
+      id: 'e2',
+      title: 'Afternoon Review',
+      start: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 14, 0),
+      end: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 15, 0),
+      isAllDay: false,
+      calendarName: 'Work'
+    }
+  ];
+
+  const allEvents = [...todayEvents, ...tomorrowEvents];
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfTomorrow = new Date(tomorrow);
+  endOfTomorrow.setHours(23, 59, 59, 999);
+
+  const dateRange = { start: startOfToday, end: endOfTomorrow };
+  const result = renderDailyView(allEvents, dateRange, 'en-US');
+
+  assert.match(result, /Today/);
+  assert.match(result, /Tomorrow/);
+  assert.match(result, /Morning Meeting/);
+  assert.match(result, /Afternoon Review/);
+});
+
+test('renderCanvasContent should filter to current week', () => {
+  const now = new Date();
+  const thisWeekEvent = {
+    id: 'e1',
+    title: 'This Week Event',
+    start: now,
+    end: now,
+    isAllDay: false,
+    calendarName: 'Work'
+  };
+
+  const nextWeekEvent = {
+    id: 'e2',
+    title: 'Next Week Event',
+    start: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000), // 10 days from now
+    end: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000),
+    isAllDay: false,
+    calendarName: 'Work'
+  };
+
+  const allEvents = [thisWeekEvent, nextWeekEvent];
+  const result = renderCanvasContent(allEvents, { locale: 'en-US' });
+
+  assert.match(result, /This Week Event/);
+  assert.ok(!result.includes('Next Week Event'), 'Should not include next week events');
 });

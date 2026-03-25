@@ -400,14 +400,14 @@ function renderCanvasContent(events, options = {}) {
 
   // Get current week range
   const now = new Date();
-  const dayOfWeek = now.getDay();
+  const dayOfWeek = now.getUTCDay();
   const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Monday
-  startOfWeek.setHours(0, 0, 0, 0);
+  startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Monday
+  startOfWeek.setUTCHours(0, 0, 0, 0);
 
   const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday
-  endOfWeek.setHours(23, 59, 59, 999);
+  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6); // Sunday
+  endOfWeek.setUTCHours(23, 59, 59, 999);
 
   const dateRange = { start: startOfWeek, end: endOfWeek };
 
