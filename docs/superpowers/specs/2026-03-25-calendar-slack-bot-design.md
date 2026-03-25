@@ -296,20 +296,24 @@ When `--scheduled` runs, the bot:
    - Tolerance accounts for GitHub Actions startup delay and cron schedule drift
 3. **Matching logic:**
    - Day match: current day of week matches schedule day (or current day is in schedule day range for "weekdays"/"weekends"/"daily")
-   - Time match: current time is within ±5 minutes of schedule time
-   - Example: schedule is "sunday 18:00", current time is Sunday 18:02 → **match**
-   - Example: schedule is "weekdays 08:00", current time is Monday 08:04 → **match**
-   - Example: schedule is "weekdays 08:00", current time is Saturday 08:01 → **no match**
+   - Time match: **`schedule_time <= current_time <= schedule_time + 5 minutes`**
+     - Schedule time must be in the past or now
+     - Current time must be within 5 minutes after schedule time
+   - Example: schedule is "sunday 18:00", current time is Sunday 18:03 → **match** (3 min after schedule)
+   - Example: schedule is "weekdays 08:00", current time is Monday 08:04 → **match** (4 min after schedule)
+   - Example: schedule is "sunday 18:00", current time is Sunday 17:58 → **no match** (schedule is in the future)
+   - Example: schedule is "sunday 18:00", current time is Sunday 18:06 → **no match** (more than 5 min after schedule)
+   - Example: schedule is "weekdays 08:00", current time is Saturday 08:01 → **no match** (wrong day)
 4. **If match:** Post digest to this channel
 5. **If no match:** Skip this channel silently
 
 **Tolerance window rationale:**
 - GitHub Actions cron is not guaranteed to run at exact time (can be delayed by minutes)
-- Tolerance window ensures digests still post even with slight delays
-- **Window is backward-looking only:** Checks if schedule time was within the last 5 minutes
-  - Example: schedule is 18:00, current time is 18:03 → match (within 5 min window)
-  - Example: schedule is 18:00, current time is 17:58 → no match (future schedule)
-  - This prevents duplicate posts if the workflow runs slightly early
+- **Forward-looking tolerance only:** Workflow can run late (up to 5 min) but not early
+  - Prevents duplicate posts if workflow runs before scheduled time
+  - Catches delayed runs within reasonable window
+  - If GitHub Actions delays > 5 minutes, digest will be skipped (logged as missed)
+- **Implementation:** `const minutesAfterSchedule = (currentTime - scheduleTime) / 60000; return minutesAfterSchedule >= 0 && minutesAfterSchedule <= 5;`
 
 **MVP limitation:**
 - The workflow cron must cover the times specified in channel schedules
@@ -403,7 +407,13 @@ When `--scheduled` runs, the bot:
 2. **Parsing strategy:**
    - Try multiple field name variations (case-insensitive)
    - Extract calendar identifier if present
-   - Map calendar identifier to config calendar ID (exact match, or substring match as fallback)
+   - **Map calendar identifier to config calendar ID:**
+     1. Try exact match first (case-sensitive): payload `"team-calendar"` matches config key `"team-calendar"`
+     2. If no exact match, try case-insensitive exact match
+     3. If still no match, try substring match: payload contains config key or vice versa
+     4. **Tie-breaking for multiple substring matches:** Use shortest matching config key (most specific)
+        - Example: payload `"team"` matches both `"team-calendar"` and `"team-standup"` → use `"team-calendar"` (shorter, equally specific) OR first alphabetically if same length
+        - If truly ambiguous → log warning, fall back to full refresh
    - If parsing succeeds and calendar is recognized → update that calendar only
    - If parsing fails or calendar not recognized → log warning, fall back to full refresh (fetch all calendars)
 
@@ -911,7 +921,13 @@ Run: https://github.com/owner/calendar-slack-bot/actions/runs/123456
        CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
      # Safe: digest_type is constrained to choice enum [weekly, daily, scheduled] — not free text
-     run: node src/bot.js --${{ inputs.digest_type }}-digest ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+     # Note: "scheduled" → "--scheduled", "weekly" → "--weekly-digest", "daily" → "--daily-digest"
+     run: |
+       if [ "${{ inputs.digest_type }}" = "scheduled" ]; then
+         node src/bot.js --scheduled ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+       else
+         node src/bot.js --${{ inputs.digest_type }}-digest ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+       fi
    ```
 
 **Environment variables:**
@@ -943,8 +959,19 @@ node src/bot.js --weekly-digest --dry-run
 - `repository_dispatch`:
   - `types: [calendar_changed]`
 - `workflow_dispatch`:
-  - `test_payload` input (string, optional) - JSON test payload
+  - `test_payload` input (string, optional) - JSON test payload for testing webhook parsing
   - `dry_run` input (boolean, default false)
+
+**Security note on `workflow_dispatch`:**
+- The `test_payload` input allows manual testing of webhook payload parsing
+- **Risk:** Anyone with repo write access can trigger this with arbitrary JSON
+- **Mitigation:** This is acceptable for MVP because:
+  - The repo is intended to be private (users fork privately, not publicly)
+  - Only repo collaborators can trigger `workflow_dispatch`
+  - The bot validates and sanitizes all inputs before processing
+  - Worst case: invalid payload triggers full refresh fallback (logged, not executed)
+  - No secrets are exposed - all credentials are in GitHub Secrets
+- **Production consideration:** If the public template repo enables Actions, disable `workflow_dispatch` trigger on webhook.yml in the template (users add it in their private forks if needed for testing)
 
 **Steps:**
 1. Checkout code
