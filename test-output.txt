@@ -1,0 +1,33 @@
+
+> calendar-slack-bot@1.0.0 test
+> node --test test/**/*.test.js
+
+✔ loadConfig should load and parse config.json (16.035583ms)
+✔ validateConfig should reject missing required fields (0.84225ms)
+✔ validateConfig should reject invalid calendar references (0.3025ms)
+✔ validateConfig should resolve environment variables (1.561125ms)
+✔ validateConfig should reject unset environment variables (0.286625ms)
+✔ validateConfig should reject invalid schedule format (0.69625ms)
+✔ diffEvents should detect new events (1.035541ms)
+✔ diffEvents should detect deleted events (0.341875ms)
+✔ diffEvents should detect time changes (0.671542ms)
+✔ diffEvents should detect title changes (0.526208ms)
+✔ diffEvents should detect location changes (0.268458ms)
+✔ diffEvents should ignore description changes (0.622459ms)
+✔ diffEvents should detect no changes for identical events (0.204458ms)
+✔ formatEventTime should format time based on locale (19.772958ms)
+✔ renderWeekView should generate week digest with all-day events first (3.146292ms)
+✔ renderChangeNotification should format time changes with arrow (2.39375ms)
+✔ renderChangeNotification should format new events (0.746208ms)
+✔ renderChangeNotification should format cancelled events (0.713125ms)
+✔ renderBundledNotification should group multiple changes by type (1.074542ms)
+✔ renderDailyView should use Today/Tomorrow labels (2.640125ms)
+✔ renderCanvasContent should filter to current week (2.330458ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 247.844959

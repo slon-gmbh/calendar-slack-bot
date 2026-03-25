@@ -310,12 +310,17 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
   // Assign calendar indicators
   const calendarIndicators = assignCalendarIndicators(events);
 
-  // Get today and tomorrow dates
-  const now = new Date();
-  const todayKey = now.toISOString().split('T')[0];
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-  const tomorrowKey = tomorrow.toISOString().split('T')[0];
+  // Helper function to get local date key (YYYY-MM-DD) without timezone conversion
+  function getLocalDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // Extract dates from dateRange to get day keys using local dates
+  const todayKey = getLocalDateKey(dateRange.start);
+  const tomorrowKey = getLocalDateKey(dateRange.end);
 
   // Group events by day
   const eventsByDay = new Map();
@@ -323,8 +328,7 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
   eventsByDay.set(tomorrowKey, []);
 
   for (const event of events) {
-    const eventDate = new Date(event.start);
-    const dayKey = eventDate.toISOString().split('T')[0];
+    const dayKey = getLocalDateKey(event.start);
     if (eventsByDay.has(dayKey)) {
       eventsByDay.get(dayKey).push(event);
     }
@@ -332,7 +336,8 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
 
   // Render each day
   for (const [dayKey, dayEvents] of eventsByDay) {
-    const date = new Date(dayKey + 'T12:00:00Z');
+    const [year, month, day] = dayKey.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0);
     const dayName = formatDate(date, locale);
     const label = dayKey === todayKey ? 'Today' : 'Tomorrow';
 
