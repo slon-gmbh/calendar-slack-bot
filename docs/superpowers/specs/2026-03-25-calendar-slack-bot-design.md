@@ -65,9 +65,11 @@ Each module is independently readable with a single, focused responsibility.
 ### Module Responsibilities
 
 **`src/bot.js`** (150-200 lines)
-- Parses CLI flags: `--weekly-digest`, `--daily-digest`, `--event-changed`, `--dry-run`
+- Parses CLI flags: `--scheduled`, `--event-changed`, `--dry-run`, `--weekly-digest` (test override), `--daily-digest` (test override)
 - Loads config via `config.js`
 - Routes to appropriate flow based on flag
+- `--scheduled`: Runtime filtering mode - checks each channel's `digest_schedule` and `daily_digest_schedule` against current time, posts digests only to channels whose schedule matches (with ~5 min tolerance for Actions startup delay)
+- `--weekly-digest` / `--daily-digest`: Explicit override flags for manual testing only - force digest to all channels regardless of schedule
 - Top comment serves as architecture map
 
 **`src/config.js`** (100-150 lines)
@@ -123,10 +125,16 @@ Each module is independently readable with a single, focused responsibility.
 
 ### Dependencies
 
-- `node-ical` - iCalendar parsing with recurring event expansion
-- `@actions/cache` - GitHub Actions cache API
-- `@slack/web-api` - Slack API client
-- Native `fetch()` for CalDAV HTTP requests (Node.js 20+)
+- `node-ical` - iCalendar parsing with recurring event expansion (latest stable, recommend ^0.18.0 or newer)
+- `@actions/cache` - GitHub Actions cache API (latest stable, recommend ^3.0.0 or newer)
+- `@slack/web-api` - Slack API client (latest stable, recommend ^7.0.0 or newer for Canvas API support)
+- Native `fetch()` for CalDAV HTTP requests (Node.js 20+ built-in, no package needed)
+
+**Version notes:**
+- Exact versions will be determined during implementation based on current npm latest
+- Canvas API support in `@slack/web-api` was added in v7.x - earlier versions will not work
+- `node-ical` should be recent enough to handle modern iCalendar formats and RRULE parsing
+- Lock versions in `package-lock.json` for reproducibility
 
 ## Configuration Schema
 
@@ -207,9 +215,12 @@ Each module is independently readable with a single, focused responsibility.
   - Format: `"<day> <HH:MM>"` where day is one of: `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`, `weekdays` (Mon-Fri), `weekends` (Sat-Sun), `daily` (every day)
   - Time is in 24-hour format, interpreted as UTC
   - Alternative: raw cron expression (e.g., `"0 18 * * 0"`) for advanced scheduling
+  - **Runtime filtering:** The bot checks this field at runtime when `--scheduled` runs and only posts digests to channels whose schedule matches the current time (within ~5 min tolerance)
+  - **MVP limitation:** Custom schedule times require adding a matching cron expression to `.github/workflows/scheduled.yml`. Default cron covers `sunday 18:00` and `weekdays 08:00`.
 - `daily_digest_schedule` (string or false, optional): Daily digest schedule (e.g., `"weekdays 08:00"`), default `false` (disabled)
   - Same format as `digest_schedule`
   - Common values: `"weekdays 08:00"` (Monday-Friday at 08:00 UTC), `"daily 09:00"` (every day at 09:00 UTC)
+  - **Runtime filtering:** Same as `digest_schedule` - checked at runtime, only posts to matching channels
 - `show_empty_days` (boolean, optional): Show days with no events, default `false`
 - `notifications` (string or object, optional): Controls change notification behavior
   - `"all"` (default): every change posted immediately after debounce
@@ -271,6 +282,37 @@ Each module is independently readable with a single, focused responsibility.
 - `"daily 12:00"` → every day at 12:00 UTC
 - `"0 18 * * 0"` → cron: every Sunday at 18:00 UTC
 - `false` → disabled
+
+### Runtime Schedule Matching
+
+**How the bot determines if a digest is due:**
+
+When `--scheduled` runs, the bot:
+
+1. **Gets current UTC time** (e.g., "2026-03-30T18:02:35Z" = Sunday 18:02 UTC)
+2. **For each channel:**
+   - Parse `digest_schedule` and `daily_digest_schedule` from config
+   - Check if current time matches schedule within ~5 minute tolerance window
+   - Tolerance accounts for GitHub Actions startup delay and cron schedule drift
+3. **Matching logic:**
+   - Day match: current day of week matches schedule day (or current day is in schedule day range for "weekdays"/"weekends"/"daily")
+   - Time match: current time is within ±5 minutes of schedule time
+   - Example: schedule is "sunday 18:00", current time is Sunday 18:02 → **match**
+   - Example: schedule is "weekdays 08:00", current time is Monday 08:04 → **match**
+   - Example: schedule is "weekdays 08:00", current time is Saturday 08:01 → **no match**
+4. **If match:** Post digest to this channel
+5. **If no match:** Skip this channel silently
+
+**Tolerance window rationale:**
+- GitHub Actions cron is not guaranteed to run at exact time (can be delayed by minutes)
+- Tolerance window ensures digests still post even with slight delays
+- Window is asymmetric: checks current time and up to 5 minutes ago to catch missed runs
+
+**MVP limitation:**
+- The workflow cron must cover the times specified in channel schedules
+- Default cron: `0 18 * * 0` and `0 8 * * 1-5` covers "sunday 18:00" and "weekdays 08:00"
+- Custom times like "friday 17:00" require adding `0 17 * * 5` to workflow cron
+- Future v2: dynamic cron generation or more frequent polling (e.g., hourly) with wider tolerance
 
 ## Cache Keys and Structure
 
@@ -386,7 +428,15 @@ Each module is independently readable with a single, focused responsibility.
 }
 ```
 
-**This approach accepts that we don't have Nextcloud webhook docs and makes the parser resilient to format variations.**
+**This approach explicitly acknowledges that Nextcloud webhook payload formats are version-dependent and not well-documented. The implementation must be exploratory and best-effort:**
+
+- Initial implementation will use common field name variations based on similar webhook systems
+- The fallback to full refresh ensures the bot never silently fails - it always updates, just less efficiently
+- Post-deployment adjustment is expected - the first real webhooks will reveal the actual payload structure
+- Clear logging of unparseable payloads will help maintainers debug and update the parser
+- The isolated `parseNextcloudWebhook()` function makes updates trivial once real payloads are observed
+
+**Testing strategy:** During initial deployment, monitor GitHub Actions logs for the first few webhook triggers. Log the full raw payload. Use this to refine the parser if needed.
 
 ## CalDAV Recurring Event Handling
 
@@ -424,16 +474,23 @@ The `node-ical` library parses iCalendar data and provides recurring event infor
 
 **Code location:** `src/caldav.js` - `expandRecurringEvents(events, startDate, endDate)` function
 
-**This approach uses node-ical's built-in rrule.js integration for RRULE parsing while handling the expansion logic explicitly.**
+**Implementation note:** The exact API for recurring event expansion in `node-ical` should be verified against the library documentation during implementation. The approach described above is based on common iCalendar library patterns (rrule.js integration). If `node-ical` uses a different API:
+
+- Check for built-in expansion methods (e.g., `expand()`, `occurrencesBetween()`)
+- Fall back to direct rrule.js usage if `node-ical` exposes raw RRULE objects
+- Worst case: parse RRULE strings manually using standalone `rrule` npm package
+
+**The critical requirement:** Weekly recurring events (e.g., "Team Standup every Monday at 9am") must appear as individual instances in the digest, not as a single recurring event. This is essential for team calendar usability.
 
 ## Data Flows
 
-### Flow 1: Weekly/Daily Digest (Scheduled)
+### Flow 1: Weekly/Daily Digest (Scheduled with Runtime Filtering)
 
 1. **GitHub Actions cron triggers** `.github/workflows/scheduled.yml`
    - Two cron expressions: `0 18 * * 0` (Sunday 18:00 UTC) and `0 8 * * 1-5` (weekdays 08:00 UTC)
-   - Each step has `if: github.event.schedule == '...'` to route correctly
-   - Manual trigger via `workflow_dispatch` with `digest_type` input (choice: weekly/daily)
+   - These are polling intervals, not the actual schedule - the bot wakes up to check if any channels need digests
+   - Calls `node src/bot.js --scheduled` (runtime filtering mode)
+   - Manual trigger via `workflow_dispatch` with `digest_type` input (choice: weekly/daily/scheduled) for testing
 
 2. **Config loading** (`config.js`)
    - Load `config.json`
@@ -451,15 +508,23 @@ The `node-ical` library parses iCalendar data and provides recurring event infor
    - Save current event snapshot to cache (per-calendar cache keys)
    - This becomes "previous state" for next event-changed run
 
-5. **For each channel** (`formatting.js` + `slack.js`)
-   - Collect all events from calendars assigned to this channel
-   - **Render and post digest message:**
-     - Weekly: render full week view, post to channel
-     - Daily: render today+tomorrow view, post to channel
-   - **Render and update Canvas:**
-     - Always render full current week (regardless of digest type)
-     - Update Canvas via Slack API
-   - Respect channel-specific settings: locale, view mode, event detail level, digest format
+5. **For each channel** (`formatting.js` + `slack.js` + `scheduler.js`)
+   - **Runtime filtering:** Check if channel's `digest_schedule` or `daily_digest_schedule` matches current time (within ~5 min tolerance)
+     - Compare current UTC time against parsed schedule from config
+     - If `digest_schedule` matches → channel is due for weekly digest
+     - If `daily_digest_schedule` matches → channel is due for daily digest
+     - If neither matches → skip this channel, no digest posted
+     - If schedule is `false` → skip this digest type for this channel
+   - **If digest is due:**
+     - Collect all events from calendars assigned to this channel
+     - **Render and post digest message:**
+       - Weekly: render full week view, post to channel
+       - Daily: render today+tomorrow view, post to channel
+     - **Render and update Canvas:**
+       - Always render full current week (regardless of digest type)
+       - Update Canvas via Slack API
+     - Respect channel-specific settings: locale, view mode, event detail level, digest format
+   - **Manual testing mode:** If invoked with `--weekly-digest` or `--daily-digest` flags, skip runtime filtering and force digest to all channels
 
 6. **Error handling**
    - Critical errors → post to error_channel if configured, else fail workflow
@@ -748,22 +813,51 @@ Run: https://github.com/owner/calendar-slack-bot/actions/runs/123456
 
 **Triggers:**
 - `schedule`:
-  - `cron: '0 18 * * 0'` (Sunday 18:00 UTC - weekly digest)
-  - `cron: '0 8 * * 1-5'` (Weekdays 08:00 UTC - daily digest)
+  - `cron: '0 18 * * 0'` (Sunday 18:00 UTC)
+  - `cron: '0 8 * * 1-5'` (Weekdays 08:00 UTC)
+  - **Note:** These are polling intervals. The bot wakes up and checks which channels need digests via runtime filtering.
   - **Note:** Times are UTC - maintainers in other timezones must adjust accordingly
+  - **MVP limitation:** Custom schedule times require adding matching cron expressions here
 - `workflow_dispatch`:
-  - `digest_type` input (choice: weekly/daily)
+  - `digest_type` input (choice: weekly/daily/scheduled)
+    - `scheduled` - runtime filtering mode (normal behavior, checks each channel's schedule)
+    - `weekly` - force weekly digest to all channels (testing override)
+    - `daily` - force daily digest to all channels (testing override)
   - `dry_run` input (boolean, default false)
 
 **Steps:**
 1. Checkout code
 2. Setup Node.js 20
-3. Write config from secret (`echo '${{ secrets.CONFIG_JSON }}' > config.json`)
+3. Write config from secret:
+   ```yaml
+   - name: Write config
+     env:
+       CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+     run: printf '%s' "$CONFIG_JSON" > config.json
+   ```
 4. Install dependencies (`npm ci`)
 5. Run tests (`npm test`) - blocks workflow if tests fail
-6. Run weekly digest (if scheduled cron matches)
-7. Run daily digest (if scheduled cron matches)
-8. Run digest (if manual trigger)
+6. Run scheduled digest check (runtime filtering):
+   ```yaml
+   - name: Run scheduled digests
+     if: github.event_name == 'schedule'
+     env:
+       CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
+       CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
+       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+     run: node src/bot.js --scheduled
+   ```
+7. Run manual digest override (if manual trigger):
+   ```yaml
+   - name: Run manual digest
+     if: github.event_name == 'workflow_dispatch'
+     env:
+       CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
+       CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
+       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+     # Safe: digest_type is constrained to choice enum [weekly, daily, scheduled] — not free text
+     run: node src/bot.js --${{ inputs.digest_type }}-digest ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+   ```
 
 **Environment variables:**
 - `CALDAV_USERNAME` (from secrets)
@@ -772,14 +866,17 @@ Run: https://github.com/owner/calendar-slack-bot/actions/runs/123456
 
 **Command examples:**
 ```bash
-# Scheduled weekly
+# Scheduled (normal mode - runtime filtering)
+node src/bot.js --scheduled
+
+# Manual testing - force weekly digest to all channels
 node src/bot.js --weekly-digest
 
-# Scheduled daily
+# Manual testing - force daily digest to all channels
 node src/bot.js --daily-digest
 
-# Manual (with dry-run)
-# Note: inputs.dry_run is a string "true"/"false", not a boolean — explicit comparison required
+# Dry-run mode (no Slack API calls)
+node src/bot.js --scheduled --dry-run
 node src/bot.js --weekly-digest --dry-run
 ```
 
@@ -797,7 +894,13 @@ node src/bot.js --weekly-digest --dry-run
 **Steps:**
 1. Checkout code
 2. Setup Node.js 20
-3. Write config from secret (`echo '${{ secrets.CONFIG_JSON }}' > config.json`)
+3. Write config from secret:
+   ```yaml
+   - name: Write config
+     env:
+       CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+     run: printf '%s' "$CONFIG_JSON" > config.json
+   ```
 4. Install dependencies (`npm ci`)
 5. Run tests (`npm test`) - blocks workflow if tests fail
 6. Handle event change
@@ -906,6 +1009,33 @@ https://api.github.com/repos/OWNER/REPO/dispatches
 - Canvas IDs for each channel (configured in `config.json`)
 - Channel IDs for each channel (configured in `config.json`)
 - Optional: error notification channel ID (configured in `config.json`)
+
+### Creating Slack Canvases
+
+**Canvas is a Slack feature that must be created manually via Slack UI - it cannot be created via API.**
+
+**Steps to create a Canvas and get its ID:**
+
+1. **Open the Slack channel** where you want the calendar Canvas
+2. **Create a new Canvas:**
+   - Click the channel name at top to open channel details
+   - Go to "Canvases" tab
+   - Click "Create a canvas"
+   - Give it a name (e.g., "Team Schedule")
+   - The Canvas is now created and pinned to the channel
+3. **Get the Canvas ID:**
+   - Open the Canvas in Slack
+   - Look at the URL in your browser: `https://app.slack.com/docs/TXXXXXXXX/FXXXXXXXXXX`
+   - The Canvas ID is the second part starting with `F` (e.g., `F9876CANVAS`)
+   - Alternatively, use the Slack API `canvases.list` method to list Canvas IDs for a channel
+4. **Add Canvas ID to config.json** in the channel's `canvas_id` field
+
+**Important:** Each channel needs its own Canvas. You cannot share a Canvas across multiple channels. Create one Canvas per channel you want to post calendars to.
+
+**Troubleshooting:** If the bot cannot update a Canvas, verify:
+- The Canvas ID is correct (starts with `F`)
+- The bot has `canvases:write` and `canvases:read` scopes
+- The bot is a member of the channel containing the Canvas
 
 ## Testing Strategy
 
@@ -1147,9 +1277,18 @@ The README must prominently document:
    - Store in Nextcloud webhook configuration
    - Rotate periodically
 
-5. **Testing:**
+5. **Digest schedules:**
+   - Per-channel `digest_schedule` and `daily_digest_schedule` fields control when digests are posted
+   - The bot uses runtime filtering - wakes up on workflow cron schedule and checks which channels need digests
+   - Default workflow cron covers "sunday 18:00" and "weekdays 08:00" (UTC)
+   - **MVP limitation:** Custom schedule times require adding matching cron expression to `.github/workflows/scheduled.yml`
+   - Example: to add "friday 17:00" digests, add `- cron: '0 17 * * 5'` to workflow
+
+6. **Testing:**
    - Use manual workflow triggers with `dry_run: true` to validate config without posting to Slack
    - Use `test_payload` input on webhook workflow to test webhook parsing
+   - Use `digest_type: scheduled` for testing runtime filtering behavior
+   - Use `digest_type: weekly` or `daily` to force digests to all channels (testing override)
 
 ## Success Criteria
 
