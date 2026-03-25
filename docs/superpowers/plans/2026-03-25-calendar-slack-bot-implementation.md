@@ -2284,31 +2284,13 @@ git commit -m "feat(bot): add main entry point with CLI routing and digest flows
 
 ---
 
-## Task 8b: Webhook Flow Implementation
+## Task 8b: Webhook Flow Manual Testing
 
-**Files:**
-- Modify: `src/bot.js` (replace placeholder runEventChanged)
+**Purpose**: Verify the webhook flow implementation (runEventChanged, debouncing, full-refresh fallback) works correctly in all scenarios.
 
-This task implements the complete webhook flow: payload parsing, diff detection, debouncing, urgency classification, channel routing, and bundled notifications.
+**Note**: The webhook implementation is already complete in Task 8's bot.js. This task is purely for manual testing and verification.
 
-- [ ] **Step 1: Update runEventChanged with full implementation**
-
-The implementation is already in place in bot.js (lines 1668-1746), replacing the placeholder. It includes:
-
-1. **Payload Parsing**: Extract calendar_id from webhook payload
-2. **Calendar Matching**: Exact match (case-sensitive then case-insensitive)
-3. **Fallback**: Full refresh if calendar not matched
-4. **Diff Detection**: Compare cached vs current events
-5. **Debounce**: Load pending notifications, merge with new diffs
-6. **Channel Routing**: Filter by channel subscriptions and notification settings
-7. **Bundled Notifications**: Use renderBundledNotification for multiple changes
-8. **Cache Management**: Save both event state and pending notifications
-
-- [ ] **Step 2: Add runFullRefresh helper**
-
-Already implemented (lines 1748-1766). Handles full-refresh fallback when webhook payload is ambiguous.
-
-- [ ] **Step 3: Test webhook flow manually**
+- [ ] **Step 1: Test basic webhook flow with matched calendar**
 
 ```bash
 # Export test environment
@@ -2321,37 +2303,73 @@ export SLACK_BOT_TOKEN="xoxb-test"
 node src/bot.js --event-changed --dry-run
 ```
 
-Expected: Parses payload, detects calendar, fetches events, detects diffs, posts notification (dry-run)
+Expected: Parses payload, detects calendar, fetches events, detects diffs, saves to debounce cache (first run won't post)
 
-- [ ] **Step 4: Test debounce mechanism**
+- [ ] **Step 2: Test debounce bundling (two webhooks within window)**
 
 Run webhook handler twice within 5 minutes:
 
 ```bash
-# First run
+# First run (change 1)
+export WEBHOOK_PAYLOAD='{"calendar_id":"team-calendar"}'
 node src/bot.js --event-changed --dry-run
 
-# Second run (within 5 min)
+# Second run (change 2, within 5 min)
 node src/bot.js --event-changed --dry-run
 ```
 
-Expected: Second run should bundle both sets of changes
+Expected:
+- First run: Saves change 1 to debounce cache, doesn't post
+- Second run: Bundles change 1 + change 2, posts bundled notification, clears cache
 
-- [ ] **Step 5: Test full-refresh fallback**
+- [ ] **Step 3: Test debounce expiry (single isolated change)**
+
+This tests the critical case where a single change occurs and no subsequent webhook arrives:
+
+```bash
+# First run (single change)
+export WEBHOOK_PAYLOAD='{"calendar_id":"team-calendar"}'
+node src/bot.js --event-changed --dry-run
+
+# Wait > 5 minutes (or manually advance cache timestamp for testing)
+
+# Second run (any subsequent webhook, even unrelated calendar)
+export WEBHOOK_PAYLOAD='{"calendar_id":"project-x"}'
+node src/bot.js --event-changed --dry-run
+```
+
+Expected:
+- First run: Saves change to cache, doesn't post
+- Second run: Detects expired window, posts stale change from first run, then processes second webhook normally
+
+**Why this matters**: Without this test, a single isolated change would be lost forever if no second webhook arrives within 5 minutes.
+
+- [ ] **Step 4: Test full-refresh fallback (ambiguous payload)**
 
 ```bash
 export WEBHOOK_PAYLOAD='{"unknown_field":"value"}'
 node src/bot.js --event-changed --dry-run
 ```
 
-Expected: Logs "running full refresh", processes all calendars
+Expected: Logs "running full refresh", processes all calendars, routes diffs to channels
 
-- [ ] **Step 6: Commit webhook implementation**
+- [ ] **Step 5: Test full-refresh fallback (missing calendar_id)**
 
 ```bash
-git add src/bot.js
-git commit -m "feat(webhook): implement full event change flow with debouncing and bundled notifications"
+export WEBHOOK_PAYLOAD='{}'
+node src/bot.js --event-changed --dry-run
 ```
+
+Expected: Logs "No calendar_id in webhook payload - running full refresh", processes all calendars
+
+- [ ] **Step 6: Test full-refresh fallback (unrecognized calendar_id)**
+
+```bash
+export WEBHOOK_PAYLOAD='{"calendar_id":"nonexistent-calendar"}'
+node src/bot.js --event-changed --dry-run
+```
+
+Expected: Logs "Calendar 'nonexistent-calendar' not found in config - running full refresh", processes all calendars
 
 ---
 
