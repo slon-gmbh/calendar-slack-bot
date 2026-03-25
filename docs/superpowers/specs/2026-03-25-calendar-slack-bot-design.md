@@ -204,7 +204,12 @@ Each module is independently readable with a single, focused responsibility.
   - `minimal`: just a Canvas link
 - `digest_format` (string, optional): `"week_view"` (default) or `"list"`
 - `digest_schedule` (string or false, optional): Weekly digest schedule (e.g., `"sunday 18:00"`), default `"sunday 18:00"`, set to `false` to disable
+  - Format: `"<day> <HH:MM>"` where day is one of: `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`, `weekdays` (Mon-Fri), `weekends` (Sat-Sun), `daily` (every day)
+  - Time is in 24-hour format, interpreted as UTC
+  - Alternative: raw cron expression (e.g., `"0 18 * * 0"`) for advanced scheduling
 - `daily_digest_schedule` (string or false, optional): Daily digest schedule (e.g., `"weekdays 08:00"`), default `false` (disabled)
+  - Same format as `digest_schedule`
+  - Common values: `"weekdays 08:00"` (Monday-Friday at 08:00 UTC), `"daily 09:00"` (every day at 09:00 UTC)
 - `show_empty_days` (boolean, optional): Show days with no events, default `false`
 - `notifications` (string or object, optional): Controls change notification behavior
   - `"all"` (default): every change posted immediately after debounce
@@ -229,6 +234,197 @@ Each module is independently readable with a single, focused responsibility.
 - `"Config error: CALDAV_PASSWORD environment variable is not set"`
 - `"Config error: channel 'C01234TEAM' missing required field 'canvas_id'"`
 - `"Config error: invalid locale 'invalid-tag' - must be a valid BCP 47 language tag"`
+
+### Schedule Parsing Grammar
+
+**Human-readable format:**
+
+```
+<day> <HH:MM>
+```
+
+**Supported day keywords:**
+- `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday` - specific weekday
+- `weekdays` - Monday through Friday (expands to all weekdays)
+- `weekends` - Saturday and Sunday (expands to both weekend days)
+- `daily` - every day of the week
+
+**Time format:**
+- 24-hour format: `HH:MM` (e.g., `08:00`, `18:30`, `23:45`)
+- Interpreted as UTC timezone
+- **Important:** All schedule times in config are UTC. Maintainers must calculate their local timezone offset. Example: for CET (UTC+1), `18:00` local time = `17:00` in config.
+
+**Alternative: raw cron expressions:**
+- Full cron syntax supported: `"0 18 * * 0"` (Sunday at 18:00 UTC)
+- Five-field format: `minute hour day-of-month month day-of-week`
+- Useful for complex schedules (e.g., "first Monday of month")
+
+**Parsing priority:**
+1. If value is `false` → disabled, skip parsing
+2. If value matches cron pattern (5 space-separated fields) → parse as cron
+3. If value matches `<day> <HH:MM>` pattern → parse as human-readable
+4. Otherwise → validation error
+
+**Examples:**
+- `"sunday 18:00"` → every Sunday at 18:00 UTC
+- `"weekdays 08:00"` → Monday-Friday at 08:00 UTC
+- `"daily 12:00"` → every day at 12:00 UTC
+- `"0 18 * * 0"` → cron: every Sunday at 18:00 UTC
+- `false` → disabled
+
+## Cache Keys and Structure
+
+### Event State Cache
+
+**Key format:** `calendar-state-<calendar-id>`
+- `<calendar-id>` is the calendar key from config (e.g., `"team-calendar"` → `calendar-state-team-calendar`)
+- One cache entry per calendar (isolated, no cross-calendar interference)
+
+**Value structure:**
+```json
+{
+  "timestamp": "2026-03-25T10:30:00Z",
+  "events": [
+    {
+      "id": "event-12345",
+      "title": "Team Standup",
+      "start": "2026-03-25T09:00:00Z",
+      "end": "2026-03-25T09:30:00Z",
+      "location": "Conference Room A",
+      "description": "Daily sync",
+      "isAllDay": false
+    }
+  ]
+}
+```
+
+**Cache behavior:**
+- Saved after every successful calendar fetch
+- Loaded before diffing on event-changed webhook
+- GitHub Actions cache TTL: 7 days of inactivity (automatic eviction)
+- Missing cache is graceful: skip diffing, fall back to generic "updated" notifications
+
+### Pending Notifications Cache
+
+**Key format:** `pending-notifications-<channel-id>`
+- `<channel-id>` is the Slack channel ID from config (e.g., `"C01234TEAM"` → `pending-notifications-C01234TEAM`)
+- One cache entry per channel (debounce state is channel-specific)
+
+**Value structure:**
+```json
+{
+  "firstTimestamp": "2026-03-25T10:30:00Z",
+  "changes": [
+    {
+      "type": "time_changed",
+      "event": {
+        "id": "event-12345",
+        "title": "Team Standup"
+      },
+      "old": { "start": "2026-03-25T09:00:00Z" },
+      "new": { "start": "2026-03-25T10:00:00Z" }
+    }
+  ]
+}
+```
+
+**Cache behavior:**
+- Created when first change arrives within debounce window
+- Updated with additional changes during window
+- Deleted after bundled notification is posted
+- Missing cache triggers immediate posting (cold start, no debounce)
+
+## Nextcloud Webhook Payload
+
+**Problem:** Nextcloud's CalDAV webhook payload format varies by version and configuration. Rather than hardcoding assumptions, the implementation must be flexible.
+
+**Approach:**
+
+1. **Expected fields (best-effort extraction):**
+   - `calendar_id` or `calendarid` or `calendar` - identifies which calendar changed
+   - `event_id` or `eventid` or `uid` - identifies which event changed (optional)
+   - `change_type` or `action` - describes change type: `created`, `modified`, `deleted` (optional)
+
+2. **Parsing strategy:**
+   - Try multiple field name variations (case-insensitive)
+   - Extract calendar identifier if present
+   - Map calendar identifier to config calendar ID (exact match, or substring match as fallback)
+   - If parsing succeeds and calendar is recognized → update that calendar only
+   - If parsing fails or calendar not recognized → log warning, fall back to full refresh (fetch all calendars)
+
+3. **Implementation:**
+   - Isolate parsing in `parseNextcloudWebhook(payload)` function in `bot.js`
+   - Function returns: `{ success: boolean, calendarId: string | null, eventId: string | null }`
+   - Clear comments documenting field name variations tried
+   - Easy to extend with new field names as Nextcloud versions change
+
+4. **Testing:**
+   - Manual trigger accepts `test_payload` input for testing various payload formats
+   - Dry-run mode helps validate parsing without side effects
+   - Document sample payloads in README for common Nextcloud versions
+
+**Sample test payload formats:**
+
+```json
+// Format 1: Nextcloud 25+
+{
+  "calendar_id": "team-calendar",
+  "event_id": "event-12345",
+  "change_type": "modified"
+}
+
+// Format 2: Older Nextcloud
+{
+  "calendarid": "team-calendar",
+  "uid": "event-12345@example.com",
+  "action": "update"
+}
+
+// Format 3: Minimal (fallback to full refresh)
+{
+  "calendar": "team"
+}
+```
+
+**This approach accepts that we don't have Nextcloud webhook docs and makes the parser resilient to format variations.**
+
+## CalDAV Recurring Event Handling
+
+**Library:** `node-ical` (https://www.npmjs.com/package/node-ical)
+
+**Recurring event expansion:**
+
+The `node-ical` library parses iCalendar data and provides recurring event information via RRULE properties. However, the library **does not automatically expand recurring events into individual instances**. This must be handled explicitly.
+
+**Implementation approach:**
+
+1. **Parse calendar with node-ical:**
+   ```javascript
+   const ical = require('node-ical');
+   const events = await ical.async.fromURL(caldavUrl, options);
+   ```
+
+2. **Detect recurring events:**
+   - Check for `event.rrule` property (RRULE object from rrule.js, which node-ical uses internally)
+   - If `event.rrule` exists, event is recurring
+
+3. **Expand recurring events:**
+   - Use `event.rrule.between(startDate, endDate)` to get occurrences within date range
+   - For each occurrence, create a new event object with the occurrence's start/end times
+   - Merge with the original event's title, location, description
+
+4. **Date range for expansion:**
+   - Weekly digest: current week (Monday 00:00 - Sunday 23:59)
+   - Daily digest: today + tomorrow (today 00:00 - tomorrow 23:59)
+   - Event change webhook: current week (to ensure Canvas shows all current instances)
+
+5. **Fallback:**
+   - If RRULE expansion fails or is unsupported for complex patterns → show original event only, log warning
+   - Common team calendar patterns (daily standups, weekly meetings) use simple RRULEs that are well-supported
+
+**Code location:** `src/caldav.js` - `expandRecurringEvents(events, startDate, endDate)` function
+
+**This approach uses node-ical's built-in rrule.js integration for RRULE parsing while handling the expansion logic explicitly.**
 
 ## Data Flows
 
