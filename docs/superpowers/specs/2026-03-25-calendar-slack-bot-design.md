@@ -544,10 +544,6 @@ Tuesday 26 Mar
 09:30  Design Review · 🟩 Project X
 11:00  1:1 with Sarah · 🟦 Team
 
-Wednesday 27 Mar
-━━━━━━━━━━━━━━━━━━━━
-(nothing scheduled)
-
 Thursday 28 Mar
 ━━━━━━━━━━━━━━━━━━━━
 📅 Project X Deadline
@@ -559,14 +555,6 @@ Friday 29 Mar
 ━━━━━━━━━━━━━━━━━━━━
 09:00  Team Standup · 🟦 Team
 14:30  Sprint Review · 🟦 Team
-
-Saturday 30 Mar
-━━━━━━━━━━━━━━━━━━━━
-(nothing scheduled)
-
-Sunday 31 Mar
-━━━━━━━━━━━━━━━━━━━━
-(nothing scheduled)
 
 📆 13 events · 3 calendars · Full schedule →
 ```
@@ -592,7 +580,7 @@ Today · Monday 25 Mar
 Tomorrow · Tuesday 26 Mar
 ━━━━━━━━━━━━━━━━━━━━
 09:30  Design Review · 🟩 Project X
-(nothing else scheduled)
+(nothing scheduled)
 
 📆 3 events · Full schedule →
 ```
@@ -770,11 +758,12 @@ Run: https://github.com/owner/calendar-slack-bot/actions/runs/123456
 **Steps:**
 1. Checkout code
 2. Setup Node.js 20
-3. Install dependencies (`npm ci`)
-4. Run tests (`npm test`) - blocks workflow if tests fail
-5. Run weekly digest (if scheduled cron matches)
-6. Run daily digest (if scheduled cron matches)
-7. Run digest (if manual trigger)
+3. Write config from secret (`echo '${{ secrets.CONFIG_JSON }}' > config.json`)
+4. Install dependencies (`npm ci`)
+5. Run tests (`npm test`) - blocks workflow if tests fail
+6. Run weekly digest (if scheduled cron matches)
+7. Run daily digest (if scheduled cron matches)
+8. Run digest (if manual trigger)
 
 **Environment variables:**
 - `CALDAV_USERNAME` (from secrets)
@@ -808,9 +797,10 @@ node src/bot.js --weekly-digest --dry-run
 **Steps:**
 1. Checkout code
 2. Setup Node.js 20
-3. Install dependencies (`npm ci`)
-4. Run tests (`npm test`) - blocks workflow if tests fail
-5. Handle event change
+3. Write config from secret (`echo '${{ secrets.CONFIG_JSON }}' > config.json`)
+4. Install dependencies (`npm ci`)
+5. Run tests (`npm test`) - blocks workflow if tests fail
+6. Handle event change
 
 **Environment variables:**
 - `CALDAV_USERNAME` (from secrets)
@@ -837,6 +827,40 @@ node src/bot.js --event-changed
 - `CALDAV_USERNAME` - Nextcloud CalDAV username
 - `CALDAV_PASSWORD` - Nextcloud CalDAV password
 - `SLACK_BOT_TOKEN` - Slack bot token (xoxb-...)
+- `CONFIG_JSON` - Full contents of `config.json` file (entire JSON config as a single secret)
+
+**Note on CONFIG_JSON:**
+- Contains the complete configuration: calendars, channels, all settings
+- Injected at runtime via `echo '${{ secrets.CONFIG_JSON }}' > config.json` as first workflow step
+- Allows keeping the public repo clean (no instance-specific data) while users run private forks with their own config
+- Users copy `config.example.json`, fill in their values, and paste the entire JSON as this secret
+
+### Nextcloud Webhook Prerequisites
+
+**CRITICAL:** Nextcloud does not send webhooks on calendar changes by default. The webhook flow will not work without additional Nextcloud configuration.
+
+**Required Nextcloud apps (install ONE of these):**
+
+1. **Workflow app** (recommended, built-in to most Nextcloud installations)
+   - Navigate to Settings → Flow in Nextcloud admin
+   - Create a new workflow:
+     - Trigger: "Calendar event created or updated" (or similar, varies by Nextcloud version)
+     - Action: "Send HTTP request"
+     - URL: GitHub repository_dispatch endpoint (see configuration below)
+     - Headers and body: see configuration below
+
+2. **WebhookListener app** (alternative, requires separate installation)
+   - Install from Nextcloud app store
+   - Configure webhook endpoint for calendar events
+   - Point to GitHub repository_dispatch endpoint
+
+**Without one of these apps configured:**
+- The event-changed workflow will never trigger
+- Changes to calendar events will only appear in scheduled digests
+- No real-time change notifications will be posted
+- The bot will appear to work for scheduled digests but silently fail for webhooks
+
+**This must be documented prominently in the README with setup instructions.**
 
 ### Nextcloud Webhook Configuration
 
@@ -851,7 +875,7 @@ https://api.github.com/repos/OWNER/REPO/dispatches
 - `Content-Type: application/json`
 
 **PAT Requirements:**
-- Scope: `repo` (specifically `repo:read` is sufficient for dispatching)
+- Scope: Full `repo` scope required (the `repository_dispatch` API requires full repo access, not just read)
 - Rotation: Rotate periodically (security best practice)
 - Storage: Store in Nextcloud as webhook secret, NEVER in repo
 - This PAT is the bridge between Nextcloud and GitHub - treat as sensitive credential
@@ -999,16 +1023,32 @@ calendar-slack-bot/
 ```
 
 **Gitignored:**
-- `config.json` (contains real channel/canvas IDs)
+- `config.json` (instance-specific, injected at runtime via `CONFIG_JSON` GitHub Secret)
 - `node_modules/`
-- Any credential files
 
 **Committed:**
-- `config.example.json` (template with placeholder values)
+- `config.example.json` (template users copy and fill in)
 - All source code
 - All tests
 - Workflows
 - Documentation
+
+**Config Injection Model:**
+
+The public repository is a clean template with no instance-specific data. Users fork it privately and add their configuration via GitHub Secrets:
+
+1. **Public repo:** Contains only `config.example.json` (template with placeholder values)
+2. **Private fork:** User copies `config.example.json` to `config.json` locally, fills in their values
+3. **GitHub Secret:** User pastes the entire `config.json` contents as the `CONFIG_JSON` secret
+4. **Runtime:** First workflow step writes config: `echo '${{ secrets.CONFIG_JSON }}' > config.json`
+
+**Intended usage models:**
+
+- **Personal/team use:** Fork this repo privately, add your four GitHub Secrets (`CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`), and you have your own running instance
+- **Contributing:** Work against the public repo, never commit real config
+- **Future hosted service:** Multi-tenant hosted version is a known long-term direction, tracked as v2+ consideration
+
+This keeps the public repo clean while allowing users to run their own private instances with their own calendars, channels, and settings.
 
 ## Future Considerations (v2)
 
@@ -1072,6 +1112,44 @@ calendar-slack-bot/
 - Validates full flow (config, CalDAV, formatting) without side effects
 - Makes it easy to test locale changes, format adjustments, new features
 - Low implementation cost, high value for maintainability
+
+### Why Config Injection via GitHub Secret?
+
+- Keeps the public repo clean (no instance-specific data, safe to publish)
+- Users fork privately and add their own config as a secret
+- Version control for config changes happens in the user's private fork, not the public template
+- Future multi-tenant hosted service can replace this with a database-backed config model
+- Simple model for single-instance deployments (the MVP use case)
+
+## README Documentation Requirements
+
+The README must prominently document:
+
+1. **Nextcloud webhook prerequisites:**
+   - Workflow app or WebhookListener app required
+   - Step-by-step setup instructions for configuring calendar webhooks
+   - Warning that the bot will appear to work for scheduled digests but silently fail for real-time notifications without this setup
+
+2. **Usage model:**
+   - Fork this repo privately (public fork exposes your config)
+   - Add four GitHub Secrets: `CALDAV_USERNAME`, `CALDAV_PASSWORD`, `SLACK_BOT_TOKEN`, `CONFIG_JSON`
+   - Copy `config.example.json`, fill in your values, paste as `CONFIG_JSON` secret
+   - Workflows run automatically on schedule and webhook triggers
+
+3. **Slack setup:**
+   - Create a Slack app with required scopes: `canvases:write`, `canvases:read`, `chat:write`
+   - Install to workspace, copy bot token
+   - Create Canvas for each channel (Canvas is a Slack feature, not created by API)
+   - Copy channel IDs and Canvas IDs for config
+
+4. **GitHub PAT for webhook:**
+   - Create PAT with full `repo` scope
+   - Store in Nextcloud webhook configuration
+   - Rotate periodically
+
+5. **Testing:**
+   - Use manual workflow triggers with `dry_run: true` to validate config without posting to Slack
+   - Use `test_payload` input on webhook workflow to test webhook parsing
 
 ## Success Criteria
 
