@@ -1,0 +1,46 @@
+name: Calendar Event Changed
+
+on:
+  repository_dispatch:
+    types: [calendar_changed]
+  workflow_dispatch:
+    inputs:
+      test_payload:
+        description: 'Test webhook payload (JSON)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (no Slack API calls)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  event-changed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write config
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: printf '%s' "$CONFIG_JSON" > config.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Handle event change
+        env:
+          CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
+          CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          WEBHOOK_PAYLOAD: ${{ inputs.test_payload || toJSON(github.event.client_payload) }}
+        # Note: inputs.dry_run is a string "true"/"false", not a boolean — explicit comparison required
+        run: node src/bot.js --event-changed ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
