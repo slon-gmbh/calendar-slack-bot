@@ -1377,7 +1377,7 @@ async function saveCachedEvents(calendarId, events) {
 /**
  * Load pending notifications from debounce cache
  * @param {string} channelId - Channel identifier
- * @returns {Promise<Array>} Pending notification diffs or empty array
+ * @returns {Promise<Object>} { expired: boolean, diffs: [] } - expired=true means window expired and diffs should be posted
  */
 async function loadPendingNotifications(channelId) {
   try {
@@ -1387,7 +1387,7 @@ async function loadPendingNotifications(channelId) {
 
     const restoredKey = await cache.restoreCache([cachePath], cacheKey);
     if (!restoredKey) {
-      return []; // No pending notifications
+      return { expired: false, diffs: [] }; // No pending notifications
     }
 
     const { readFile } = await import('node:fs/promises');
@@ -1400,18 +1400,18 @@ async function loadPendingNotifications(channelId) {
     const ageSeconds = (now - timestamp) / 1000;
 
     if (ageSeconds > 300) {
-      // Older than 5 minutes - expired
-      return [];
+      // Window expired — return stale diffs so they get posted, not dropped
+      return { expired: true, diffs: data.diffs || [] };
     }
 
-    return data.diffs || [];
+    return { expired: false, diffs: data.diffs || [] };
   } catch (error) {
     if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('@actions/cache')) {
       console.warn('Cache unavailable (not running in GitHub Actions) — skipping cache operations');
     } else {
       console.warn(`Failed to load pending notifications for ${channelId}:`, error.message);
     }
-    return [];
+    return { expired: false, diffs: [] };
   }
 }
 
@@ -2159,9 +2159,20 @@ async function runEventChanged(config, dryRun) {
   // Add calendar name to diffs
   const diffsWithCalendar = diffs.map(d => ({ ...d, calendarName: calendar.name }));
 
-  // Route to channels
+  // Route to channels using shared helper
+  await routeDiffsToChannels(config, matchedCalId, diffsWithCalendar, dryRun);
+
+  // Save updated cache
+  await saveCachedEvents(matchedCalId, currentEvents);
+}
+
+/**
+ * Route detected diffs to subscribed channels with debouncing
+ * Shared by runEventChanged and runFullRefresh
+ */
+async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRun) {
   for (const channel of config.channels) {
-    if (!channel.calendars.includes(matchedCalId)) {
+    if (!channel.calendars.includes(calendarId)) {
       continue; // This channel doesn't subscribe to this calendar
     }
 
@@ -2175,38 +2186,40 @@ async function runEventChanged(config, dryRun) {
     }
 
     // Load pending notifications (debounce)
-    const pendingDiffs = await loadPendingNotifications(channel.id);
-    const allDiffs = [...pendingDiffs, ...notifiableDiffs];
+    const pending = await loadPendingNotifications(channel.id);
 
-    // Save back to debounce cache
-    await savePendingNotifications(channel.id, allDiffs);
+    // If window expired, post stale diffs first
+    if (pending.expired && pending.diffs.length > 0) {
+      console.log(`Debounce window expired for channel ${channel.id} - posting ${pending.diffs.length} stale diffs`);
+      const locale = channel.locale || config.locale;
+      const staleNotification = renderBundledNotification(pending.diffs, locale);
+      await postMessage(channel.id, staleNotification, dryRun);
+    }
 
-    // Check if debounce window has elapsed
-    if (pendingDiffs.length === 0) {
-      // First notification in window - wait for more
-      console.log(`Started debounce window for channel ${channel.id}`);
+    // Now handle new diffs
+    if (pending.expired || pending.diffs.length === 0) {
+      // Start fresh debounce window for new diffs
+      console.log(`Started fresh debounce window for channel ${channel.id}`);
+      await savePendingNotifications(channel.id, notifiableDiffs);
       continue;
     }
 
-    // Debounce window active - check if we should send now
-    // (In practice, the 5-minute window check in loadPendingNotifications handles this)
+    // Debounce window active - merge with pending
+    const allDiffs = [...pending.diffs, ...notifiableDiffs];
+
     // Post bundled notification
     const locale = channel.locale || config.locale;
     const notification = renderBundledNotification(allDiffs, locale);
-
     await postMessage(channel.id, notification, dryRun);
 
     // Clear debounce cache
     await savePendingNotifications(channel.id, []);
   }
-
-  // Save updated cache
-  await saveCachedEvents(matchedCalId, currentEvents);
 }
 
 async function runFullRefresh(config, dryRun) {
   console.log('Running full refresh for all calendars');
-  // This is a simplified version - in production, you'd want to batch by channel
+
   for (const calId of Object.keys(config.calendars)) {
     const calendar = config.calendars[calId];
     const currentEvents = await fetchCalendar(
@@ -2219,7 +2232,12 @@ async function runFullRefresh(config, dryRun) {
 
     if (diffs.length > 0) {
       console.log(`Calendar ${calId}: ${diffs.length} change(s)`);
-      // Process diffs similar to above (omitted for brevity - would route to channels)
+
+      // Add calendar name to diffs
+      const diffsWithCalendar = diffs.map(d => ({ ...d, calendarName: calendar.name }));
+
+      // Route to channels using shared helper
+      await routeDiffsToChannels(config, calId, diffsWithCalendar, dryRun);
     }
 
     await saveCachedEvents(calId, currentEvents);
