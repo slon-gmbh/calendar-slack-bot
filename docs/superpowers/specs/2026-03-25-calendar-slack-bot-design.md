@@ -306,7 +306,10 @@ When `--scheduled` runs, the bot:
 **Tolerance window rationale:**
 - GitHub Actions cron is not guaranteed to run at exact time (can be delayed by minutes)
 - Tolerance window ensures digests still post even with slight delays
-- Window is asymmetric: checks current time and up to 5 minutes ago to catch missed runs
+- **Window is backward-looking only:** Checks if schedule time was within the last 5 minutes
+  - Example: schedule is 18:00, current time is 18:03 → match (within 5 min window)
+  - Example: schedule is 18:00, current time is 17:58 → no match (future schedule)
+  - This prevents duplicate posts if the workflow runs slightly early
 
 **MVP limitation:**
 - The workflow cron must cover the times specified in channel schedules
@@ -341,10 +344,20 @@ When `--scheduled` runs, the bot:
 ```
 
 **Cache behavior:**
-- Saved after every successful calendar fetch
+- Saved after every successful calendar fetch (scheduled digest or webhook)
 - Loaded before diffing on event-changed webhook
 - GitHub Actions cache TTL: 7 days of inactivity (automatic eviction)
 - Missing cache is graceful: skip diffing, fall back to generic "updated" notifications
+
+**Race condition handling:**
+- Scheduled digest and webhook workflows can run concurrently
+- Both workflows read/write the same event state cache keys
+- GitHub Actions cache API is eventually consistent - last write wins
+- **Acceptable race:** If digest and webhook run simultaneously, one may use slightly stale cache
+  - Worst case: a single webhook might show generic "updated" instead of precise diff
+  - Next webhook will have correct cache from the concurrent digest run
+  - This is acceptable for MVP - happens rarely, degrades gracefully
+- Pending notifications cache is per-channel and only used by webhooks (no race with scheduled)
 
 ### Pending Notifications Cache
 
@@ -474,13 +487,35 @@ The `node-ical` library parses iCalendar data and provides recurring event infor
 
 **Code location:** `src/caldav.js` - `expandRecurringEvents(events, startDate, endDate)` function
 
-**Implementation note:** The exact API for recurring event expansion in `node-ical` should be verified against the library documentation during implementation. The approach described above is based on common iCalendar library patterns (rrule.js integration). If `node-ical` uses a different API:
+**Implementation approach (priority order):**
 
-- Check for built-in expansion methods (e.g., `expand()`, `occurrencesBetween()`)
-- Fall back to direct rrule.js usage if `node-ical` exposes raw RRULE objects
-- Worst case: parse RRULE strings manually using standalone `rrule` npm package
+1. **First: Check node-ical documentation** for built-in recurring event expansion
+   - Look for methods like `expand()`, `occurrencesBetween()`, or similar
+   - If found and working: use the built-in method (simplest)
 
-**The critical requirement:** Weekly recurring events (e.g., "Team Standup every Monday at 9am") must appear as individual instances in the digest, not as a single recurring event. This is essential for team calendar usability.
+2. **If no built-in expansion:** Check if `node-ical` exposes RRULE objects
+   - `node-ical` internally uses `rrule.js` library
+   - If `event.rrule` is an RRule object: use `event.rrule.between(startDate, endDate)`
+   - This is the most likely scenario based on common iCalendar library patterns
+
+3. **If neither works:** Add `rrule` package as separate dependency
+   - Parse RRULE strings from event data
+   - Create RRule objects manually: `new RRule({ ... })`
+   - Use `rrule.between(startDate, endDate)` for expansion
+   - This adds one dependency but guarantees recurring event support
+
+4. **Worst case fallback:** Show recurring events as single entries with "(recurring)" label
+   - Log warning that recurring expansion failed
+   - This is acceptable for initial deployment if libraries don't cooperate
+   - Can be fixed post-deployment once real calendar data reveals issues
+
+**Decision criteria during implementation:**
+- Try approach 1 first (spend <30 min investigating)
+- If approach 1 fails, try approach 2 (spend <1 hour)
+- If approach 2 fails, implement approach 3 (guaranteed to work)
+- Approach 4 is only if approaches 1-3 all fail catastrophically (unlikely)
+
+**The critical requirement:** Weekly recurring events (e.g., "Team Standup every Monday at 9am") must appear as individual instances in the digest, not as a single recurring event. Approaches 1-3 all achieve this. This is essential for team calendar usability.
 
 ## Data Flows
 
@@ -547,12 +582,17 @@ The `node-ical` library parses iCalendar data and provides recurring event infor
 3. **Parse webhook payload** (`bot.js`)
    - Extract calendar identifier from payload
    - Payload parsing isolated in dedicated function (easy to adjust for Nextcloud version differences)
-   - If parsing fails or calendar not recognized → log warning, fall back to full refresh
+   - **If parsing fails or calendar not recognized:**
+     - Log warning with full payload for debugging
+     - **Full refresh fallback:** Fetch ALL calendars from config, update ALL channels
+     - This ensures correctness at cost of efficiency - no changes are missed
 
 4. **Load cache and fetch affected calendar(s)** (`diff.js` + `caldav.js`)
    - Load previous event snapshot from GitHub Actions cache
-   - Fetch current events from CalDAV for affected calendar (or all calendars if fallback triggered)
-   - If cache missing/expired → log note, proceed without diffing (post immediate notifications)
+   - Fetch current events from CalDAV:
+     - **If payload parsed successfully:** Fetch only affected calendar
+     - **If full refresh fallback:** Fetch all calendars from config
+   - If cache missing/expired → log note, proceed without diffing (post immediate notifications for that calendar)
 
 5. **Detect changes** (`diff.js`)
    - Compare previous vs current events
@@ -560,13 +600,28 @@ The `node-ical` library parses iCalendar data and provides recurring event infor
    - Return list of diff objects with old/new state
 
 6. **Classify urgency and debounce** (`scheduler.js`)
-   - For each diff, classify as URGENT / THIS_WEEK / FUTURE
-   - Load pending notifications cache
-   - **If cache exists:** Check debounce window (5 min since first pending notification)
-     - Still within window: Add current change to pending cache, exit without posting
-     - Window elapsed: Bundle all pending changes, proceed to post
-   - **If cache missing:** Post immediately without debouncing (cold start, acceptable trade-off)
-   - Apply cascade rules (promote urgency tiers based on configured digests)
+   - Determine which channels are affected by the changed calendar(s)
+   - **For each affected channel:**
+     - **Check notification settings first:**
+       - If `notifications: "disabled"` → skip this channel entirely, update Canvas only (no message)
+       - If `notifications: "weekly"` → skip immediate notification, change will appear in next weekly digest
+       - If `notifications: "daily"` → skip immediate notification, change will appear in next daily digest
+       - If `notifications: "urgent_only"` or `"all"` → proceed with urgency classification
+     - **Classify urgency for each diff** (only if notifications enabled):
+       - URGENT: event starts within 24 hours
+       - THIS_WEEK: event starts within current week
+       - FUTURE: event starts beyond current week
+     - **Apply cascade rules** (promote urgency based on channel's configured digests):
+       - If no `daily_digest_schedule` → THIS_WEEK promoted to URGENT
+       - If no `digest_schedule` → FUTURE promoted to THIS_WEEK (or URGENT if no daily either)
+       - Ensures every change has somewhere to go
+     - **Debounce check** (per-channel, only for changes that should notify now):
+       - Load pending notifications cache for this channel: `pending-notifications-{channel-id}`
+       - **If cache exists:** Check if 5 min debounce window elapsed since first pending change
+         - Still within window: Add current changes to pending cache, exit without posting to this channel
+         - Window elapsed: Bundle all pending changes, proceed to post
+       - **If cache missing:** Post immediately without debouncing (cold start)
+   - **Important:** Debounce state is per-channel, not per-calendar. Same calendar change feeding multiple channels can be in different debounce states for each channel.
 
 7. **Update affected channels** (`formatting.js` + `slack.js`)
    - Determine which channels receive this calendar
