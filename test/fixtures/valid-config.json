@@ -1,0 +1,21 @@
+{
+  "locale": "en-US",
+  "caldav_credentials": {
+    "username": "testuser",
+    "password": "testpass"
+  },
+  "calendars": {
+    "test-cal": {
+      "name": "Test Calendar",
+      "caldav_url": "https://test.example.com/calendar"
+    }
+  },
+  "channels": [
+    {
+      "id": "C123TEST",
+      "canvas_id": "F123TEST",
+      "calendars": ["test-cal"],
+      "digest_schedule": "sunday 18:00"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "locale": "en-US",
+  "error_channel": "C01234ERROR",
+  "caldav_credentials": {
+    "username": "${CALDAV_USERNAME}",
+    "password": "${CALDAV_PASSWORD}"
+  },
+  "calendars": {
+    "team-calendar": {
+      "name": "Team Calendar",
+      "caldav_url": "https://nextcloud.example.com/remote.php/dav/calendars/user/team/"
+    },
+    "project-x": {
+      "name": "Project X",
+      "caldav_url": "https://nextcloud.example.com/remote.php/dav/calendars/user/project-x/"
+    }
+  },
+  "channels": [
+    {
+      "id": "C01234TEAM",
+      "name": "#team-schedule",
+      "canvas_id": "F9876CANVAS",
+      "calendars": ["team-calendar", "project-x"],
+      "locale": "de-DE",
+      "view": "merged",
+      "event_detail": "standard",
+      "digest_style": "full",
+      "digest_format": "week_view",
+      "digest_schedule": "sunday 18:00",
+      "daily_digest_schedule": "weekdays 08:00",
+      "show_empty_days": false,
+      "notifications": "all"
+    }
+  ]
+}
