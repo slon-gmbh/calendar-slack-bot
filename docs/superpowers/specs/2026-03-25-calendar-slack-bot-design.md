@@ -68,7 +68,7 @@ Each module is independently readable with a single, focused responsibility.
 - Parses CLI flags: `--scheduled`, `--event-changed`, `--dry-run`, `--weekly-digest` (test override), `--daily-digest` (test override)
 - Loads config via `config.js`
 - Routes to appropriate flow based on flag
-- `--scheduled`: Runtime filtering mode - checks each channel's `digest_schedule` and `daily_digest_schedule` against current time, posts digests only to channels whose schedule matches (with ~5 min tolerance for Actions startup delay)
+- `--scheduled`: Runtime filtering mode - checks each channel's `digest_schedule` and `daily_digest_schedule` against current time, posts digests only to channels whose schedule matches (with ±30 min tolerance window for hourly polling)
 - `--weekly-digest` / `--daily-digest`: Explicit override flags for manual testing only - force digest to all channels regardless of schedule
 - Top comment serves as architecture map
 
@@ -236,7 +236,12 @@ Each module is independently readable with a single, focused responsibility.
 2. All channel `calendars` references point to defined calendar IDs
 3. `locale` values are valid BCP 47 tags (basic pattern validation)
 4. `${ENV_VAR}` placeholders are resolved (environment variables exist)
-5. `digest_schedule` and `daily_digest_schedule` are parseable (human-readable format or cron)
+5. `digest_schedule` and `daily_digest_schedule` are parseable and valid:
+   - If human-readable format: day keyword must be valid (`monday` - `sunday`, `weekdays`, `weekends`, `daily`)
+   - Time must be valid 24-hour format: `HH:MM` where `00 <= HH <= 23` and `00 <= MM <= 59`
+   - If cron format: must be valid 5-field cron expression
+   - If `false`: accepted as disabled
+   - Reject malformed strings like "weekdays 8:00" (missing leading zero), "monday 25:00" (invalid hour), "monday 14:75" (invalid minute)
 6. `view`, `event_detail`, `digest_style`, `digest_format`, `notifications` are valid enum values
 
 ### Error Message Examples
@@ -303,7 +308,14 @@ When `--scheduled` runs, the bot:
    - Example: schedule is "sunday 18:00", current time is Sunday 18:31 → **no match** (>30 min after)
    - Example: schedule is "sunday 18:00", current time is Sunday 17:29 → **no match** (>30 min before)
    - Example: schedule is "weekdays 08:00", current time is Saturday 08:00 → **no match** (wrong day)
-   - **Duplicate prevention:** Track last posted digest time per channel in cache, skip if already posted within last 55 minutes (prevents double-posting if workflow runs twice in same tolerance window)
+   - **Duplicate prevention:** Track last posted digest time per channel in cache (see Last Digest Timestamp Cache below)
+     - Skip posting if same digest type was posted within last 55 minutes
+     - **Rationale:** Hourly workflow (60 min) + ±30 min tolerance = up to 90 min window where same schedule could match twice
+     - 55 min threshold ensures we don't skip the next legitimate digest (60 min - 5 min safety margin)
+     - Example timeline:
+       - 17:45: Workflow runs, schedule 18:00 matches (within tolerance), posts digest, cache timestamp = 17:45
+       - 18:00: Workflow runs again, schedule 18:00 matches (within tolerance), but last post was 15 min ago → skip (within 55 min)
+       - 19:00: Workflow runs, schedule 18:00 no longer matches (>30 min after), and last post was 75 min ago → no action needed
 4. **If match:** Post digest to this channel (if not already posted recently)
 5. **If no match:** Skip this channel silently
 
@@ -569,7 +581,7 @@ Use `node-ical`'s built-in RRULE support (the library uses `rrule.js` internally
    - This becomes "previous state" for next event-changed run
 
 5. **For each channel** (`formatting.js` + `slack.js` + `scheduler.js`)
-   - **Runtime filtering:** Check if channel's `digest_schedule` or `daily_digest_schedule` matches current time (within ~5 min tolerance)
+   - **Runtime filtering:** Check if channel's `digest_schedule` or `daily_digest_schedule` matches current time (within ±30 min tolerance)
      - Compare current UTC time against parsed schedule from config
      - If `digest_schedule` matches → channel is due for weekly digest
      - If `daily_digest_schedule` matches → channel is due for daily digest
@@ -1394,10 +1406,10 @@ The README must prominently document:
 
 5. **Digest schedules:**
    - Per-channel `digest_schedule` and `daily_digest_schedule` fields control when digests are posted
-   - The bot uses runtime filtering - wakes up on workflow cron schedule and checks which channels need digests
-   - Default workflow cron covers "sunday 18:00" and "weekdays 08:00" (UTC)
-   - **MVP limitation:** Custom schedule times require adding matching cron expression to `.github/workflows/scheduled.yml`
-   - Example: to add "friday 17:00" digests, add `- cron: '0 17 * * 5'` to workflow
+   - **Hourly polling model:** Workflow runs every hour (`cron: '0 * * * *'`), checks all channel schedules with ±30 min tolerance
+   - Any valid schedule time in config works automatically - no workflow file edits needed
+   - All schedule times are UTC - maintainers in other timezones must calculate offset
+   - Duplicate prevention via cache ensures no double-posting within same tolerance window
 
 6. **Testing:**
    - Use manual workflow triggers with `dry_run: true` to validate config without posting to Slack
