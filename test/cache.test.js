@@ -39,3 +39,19 @@ test('loadCacheState should return null for missing file', async () => {
 
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
 });
+
+test('loadCacheState should return null for corrupt JSON', async () => {
+  await mkdir(TEST_CACHE_DIR, { recursive: true });
+
+  await writeFile(
+    path.join(TEST_CACHE_DIR, 'corrupt-calendar.json'),
+    '{ invalid json',
+    'utf-8'
+  );
+
+  const result = await loadCacheState('corrupt-calendar', TEST_CACHE_DIR);
+
+  assert.strictEqual(result, null);
+
+  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+});
