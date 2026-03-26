@@ -69,6 +69,9 @@ function normalizeEvent(icalEvent, instanceStart = null) {
   // Debug logging
   console.log(`[DEBUG] Event: ${normalized.title}`);
   console.log(`  Raw start:`, start);
+  console.log(`  Raw start type:`, typeof start, start instanceof Date);
+  console.log(`  Raw start tz property:`, start.tz);
+  console.log(`  Raw start keys:`, start instanceof Date ? Object.keys(start) : 'N/A');
   console.log(`  Normalized start:`, normalized.start);
   console.log(`  ISO string:`, normalized.start.toISOString());
   console.log(`  datetype:`, icalEvent.datetype);
