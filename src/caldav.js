@@ -69,42 +69,40 @@ function convertToUTC(date, defaultTimezone) {
     return d;
   }
 
-  // No timezone info - node-ical stored local time as if it were UTC
-  // We need to interpret the time components as being in defaultTimezone
-  // and convert to proper UTC
+  // No timezone info - node-ical seems to store time in an inconsistent way
+  // We need to add the timezone offset to get the correct UTC time
   const year = d.getUTCFullYear();
   const month = d.getUTCMonth();
   const day = d.getUTCDate();
   const hours = d.getUTCHours();
   const minutes = d.getUTCMinutes();
   const seconds = d.getUTCSeconds();
+  const ms = d.getUTCMilliseconds();
 
-  // Create a date string in the format: "2026-03-25T11:00:00"
-  const localDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  // Create a formatter to get the offset for this specific date/time in the target timezone
+  const testDate = new Date(Date.UTC(year, month, day, 12, 0, 0)); // Use noon to avoid DST edge cases
 
-  // Use Intl.DateTimeFormat to get the UTC offset for this timezone at this date
+  // Get the timezone offset in minutes
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: defaultTimezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZoneName: 'longOffset'
+    timeZoneName: 'shortOffset'
   });
 
-  // Parse the local time in the target timezone
-  // This is a workaround: create a date object with the local time components
-  // interpreted as being in the specified timezone
-  const localDate = new Date(localDateStr);
-  const utcDate = new Date(localDate.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const tzDate = new Date(localDate.toLocaleString('en-US', { timeZone: defaultTimezone }));
-  const offset = tzDate.getTime() - utcDate.getTime();
+  const parts = formatter.formatToParts(testDate);
+  const offsetStr = parts.find(part => part.type === 'timeZoneName')?.value || '+00:00';
 
-  // Adjust the original date by the offset
-  return new Date(d.getTime() - offset);
+  // Parse offset string like "GMT+1" or "GMT-5"
+  const offsetMatch = offsetStr.match(/GMT([+-])(\d+)(?::(\d+))?/);
+  let offsetMinutes = 0;
+  if (offsetMatch) {
+    const sign = offsetMatch[1] === '+' ? 1 : -1;
+    const offsetHours = parseInt(offsetMatch[2], 10);
+    const offsetMins = parseInt(offsetMatch[3] || '0', 10);
+    offsetMinutes = sign * (offsetHours * 60 + offsetMins);
+  }
+
+  // Add the offset to get proper UTC
+  return new Date(Date.UTC(year, month, day, hours, minutes, seconds, ms) + offsetMinutes * 60000);
 }
 
 function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
