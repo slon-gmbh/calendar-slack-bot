@@ -56,24 +56,40 @@ test('loadCacheState should return null for corrupt JSON', async () => {
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
 });
 
+/**
+ * Verify saveCacheState writes valid JSON with events and proper metadata
+ * Round-trip test: save events with no error state, then load and verify
+ * - Event IDs and titles match exactly after round trip
+ * - Event start dates serialize to ISO strings correctly
+ * - updated_at timestamp is set
+ * - last_error field is absent (not included in JSON)
+ */
 test('saveCacheState should write valid JSON with events', async () => {
   await mkdir(TEST_CACHE_DIR, { recursive: true });
 
   const events = [
-    { id: 'e1', title: 'Meeting', start: '2026-03-26T10:00:00.000Z' }
+    { id: 'e1', title: 'Meeting', start: new Date('2026-03-26T10:00:00Z') }
   ];
 
   await saveCacheState('test-calendar', events, null, TEST_CACHE_DIR);
 
   const saved = await loadCacheState('test-calendar', TEST_CACHE_DIR);
 
-  assert.deepStrictEqual(saved.events, events);
+  assert.strictEqual(saved.events[0].id, 'e1');
+  assert.strictEqual(saved.events[0].title, 'Meeting');
+  assert.strictEqual(saved.events[0].start, '2026-03-26T10:00:00.000Z');
   assert.ok(saved.updated_at);
   assert.ok(!saved.last_error);
 
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
 });
 
+/**
+ * Verify saveCacheState includes error metadata when provided
+ * Round-trip test: save empty events with error state, then load and verify
+ * - last_error field is preserved
+ * - error_notified_at field is preserved
+ */
 test('saveCacheState should include error metadata', async () => {
   await mkdir(TEST_CACHE_DIR, { recursive: true });
 
