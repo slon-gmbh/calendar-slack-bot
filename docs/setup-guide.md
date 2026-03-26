@@ -340,4 +340,87 @@ Running weekly digest...
 
 ## Step 9: First Live Run
 
-Coming next...
+Now run the bot for real to post actual messages to Slack.
+
+1. **Double-check you're ready:**
+   - ✅ Dry-run test passed in Step 8
+   - ✅ Bot is invited to all channels (especially private ones)
+   - ✅ Canvas documents are created in each channel
+   - ✅ All GitHub Secrets are configured
+
+2. **Run the workflow without dry-run:**
+   - Go to: Repository → Actions → **"Scheduled Digests"**
+   - Click **"Run workflow"**
+   - Configure:
+     - **Branch:** `main`
+     - **Digest type:** `weekly`
+     - **Dry run:** ❌ **Uncheck this box** (set to false)
+   - Click **"Run workflow"**
+
+3. **Watch it run:**
+   - Click on the workflow run
+   - Watch the logs
+   - Should complete successfully in 10-30 seconds
+   - Look for lines like: `Fetched X events from calendar 'Name' (id)`
+
+4. **Check Slack:**
+   - Go to your Slack channels
+   - You should see:
+     - A new message from your Calendar Bot with the digest
+     - The Canvas document updated with the week view
+   - Check all configured channels
+
+5. **Verify the output:**
+   - ✅ Correct timezone (times match Nextcloud)
+   - ✅ German localization (KW, Termine, Kalender)
+   - ✅ All calendars included
+   - ✅ Bold header with "Wochenübersicht"
+   - ✅ Canvas updated
+
+**If something goes wrong:**
+- Check workflow logs for error messages
+- Verify bot is a member of all channels
+- Verify Canvas IDs are correct
+- Verify SLACK_BOT_TOKEN is valid
+- Check CalDAV URLs are accessible
+
+**Success!** Your calendar-slack-bot is now running. The scheduled workflow will run hourly and post digests according to your configured schedules.
+
+## Next Steps
+
+### Automated Scheduling
+
+The bot will now run automatically:
+- **Hourly:** GitHub Actions polls for schedule matches
+- **Weekly digests:** Posted according to `digest_schedule` in config
+- **Daily digests:** Posted according to `daily_digest_schedule` in config
+
+### Maintenance
+
+**Updating Configuration:**
+1. Edit your local `config.json`
+2. Update the `CONFIG_JSON` GitHub Secret
+3. Changes take effect on next workflow run
+
+**Adding/Removing Calendars:**
+1. Get the CalDAV URL (or public sharing link)
+2. Add to `calendars` section in config.json
+3. Reference in channel's `calendars` array
+4. Update GitHub Secret
+
+**Monitoring:**
+- Check the error channel for bot errors
+- Review workflow runs in Actions tab
+- All logs are available in GitHub Actions
+
+### Future Enhancements
+
+See the [GitHub Issues](https://github.com/slon-gmbh/calendar-slack-bot/issues) for planned features:
+- Calendar color matching with Nextcloud
+- Clickable Canvas links
+- Summary vs full content in messages
+- Interactive setup wizard
+
+---
+
+**Congratulations!** Your calendar-slack-bot is fully configured and running.
