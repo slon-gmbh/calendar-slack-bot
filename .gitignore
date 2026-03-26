@@ -3,6 +3,7 @@ node_modules/
 
 # Config (injected at runtime via GitHub Secret)
 config.json
+.env
 
 # Logs
 *.log

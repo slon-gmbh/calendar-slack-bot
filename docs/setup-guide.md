@@ -143,4 +143,74 @@ If you're using a private channel, you MUST invite the bot:
 
 ## Step 5: Build config.json
 
+Create your configuration file with all the IDs and settings you've collected.
+
+**Important:** `config.json` is in `.gitignore` and will NOT be pushed to GitHub. You'll store it as a GitHub Secret instead.
+
+1. **Copy the example config:**
+   ```bash
+   cp config.example.json config.json
+   ```
+
+2. **Edit `config.json` with your values:**
+
+   **Global settings:**
+   - `locale`: Default language/date format (e.g., `"en-US"`, `"de-DE"`)
+   - `error_channel`: Channel ID where bot posts error messages (create a dedicated channel if desired)
+
+   **CalDAV credentials:**
+   - `username`: Your actual Nextcloud username
+   - `password`: Use `"${CALDAV_PASSWORD}"` - actual password stored in GitHub Secret
+
+   **Calendars:**
+   - Each calendar needs a unique key (e.g., `"team-calendar"`)
+   - `name`: Display name shown in Slack
+   - `caldav_url`: Full CalDAV URL from Nextcloud
+     - **To find:** Nextcloud Calendar → Click three dots (⋯) on calendar → "Private link that can be used with external clients"
+     - Must end with trailing `/`
+
+   **Channels (array):**
+   - `id`: Channel ID from Step 4
+   - `name`: Descriptive name like `"#team-calendar"`
+   - `canvas_id`: Canvas ID from Step 3
+   - `calendars`: Array of calendar keys (e.g., `["team-calendar"]`)
+   - `digest_schedule`: When to post weekly digest (e.g., `"sunday 18:00"`)
+   - `daily_digest_schedule`: When to post daily digest (e.g., `"weekdays 08:00"`)
+
+3. **Save the file** - it stays local only (in `.gitignore`)
+
+### Optional: Local Testing Setup
+
+If you want to test the bot locally before deploying to GitHub Actions:
+
+1. **Create a `.env` file** from the example:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` with your actual credentials:**
+   ```
+   CALDAV_PASSWORD=your-actual-nextcloud-password
+   SLACK_BOT_TOKEN=xoxb-your-actual-slack-bot-token
+   ```
+
+3. **Install dependencies** (if not already done):
+   ```bash
+   npm install
+   ```
+
+4. **Run tests:**
+   ```bash
+   npm test
+   ```
+
+5. **Test the bot locally** (dry-run mode - won't post to Slack):
+   ```bash
+   node -r dotenv/config src/bot.js --dry-run --weekly-digest
+   ```
+
+**Note:** The `.env` file is in `.gitignore` and will never be committed.
+
+## Step 6: Configure GitHub Secrets
+
 Coming next...
