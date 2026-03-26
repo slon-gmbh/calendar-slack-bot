@@ -77,6 +77,9 @@ async function runScheduledDigests(config, dryRun) {
 }
 
 async function postDigestForChannel(config, channel, type, dryRun) {
+  // Determine timezone early so we can use it for fetching
+  const timezone = channel.timezone || config.timezone || 'UTC';
+
   // Fetch events from all calendars for this channel
   const allEvents = [];
   for (const calId of channel.calendars) {
@@ -85,7 +88,8 @@ async function postDigestForChannel(config, channel, type, dryRun) {
       const events = await fetchCalendar(
         calendar.caldav_url,
         config.caldav_credentials,
-        getCurrentWeekRange()
+        getCurrentWeekRange(),
+        timezone
       );
       console.log(`Fetched ${events.length} events from calendar '${calendar.name}' (${calId})`);
       allEvents.push(...events.map(e => ({ ...e, calendarName: calendar.name })));
@@ -97,7 +101,6 @@ async function postDigestForChannel(config, channel, type, dryRun) {
 
   // Render and post digest
   const locale = channel.locale || config.locale;
-  const timezone = channel.timezone || config.timezone || 'UTC';
   const dateRange = type === 'daily'
     ? getDailyRange()
     : getCurrentWeekRange();
@@ -181,10 +184,12 @@ async function runEventChanged(config, dryRun) {
 
   // Fetch current events
   const calendar = config.calendars[matchedCalId];
+  const timezone = config.timezone || 'UTC';
   const currentEvents = await fetchCalendar(
     calendar.caldav_url,
     config.caldav_credentials,
-    getCurrentWeekRange()
+    getCurrentWeekRange(),
+    timezone
   );
 
   // Load cached events
@@ -267,12 +272,14 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
 async function runFullRefresh(config, dryRun) {
   console.log('Running full refresh for all calendars');
 
+  const timezone = config.timezone || 'UTC';
   for (const calId of Object.keys(config.calendars)) {
     const calendar = config.calendars[calId];
     const currentEvents = await fetchCalendar(
       calendar.caldav_url,
       config.caldav_credentials,
-      getCurrentWeekRange()
+      getCurrentWeekRange(),
+      timezone
     );
     const previousEvents = await loadCachedEvents(calId) || [];
     const diffs = diffEvents(previousEvents, currentEvents);
