@@ -213,4 +213,86 @@ If you want to test the bot locally before deploying to GitHub Actions:
 
 ## Step 6: Configure GitHub Secrets
 
+Store your sensitive configuration and credentials as encrypted GitHub Secrets.
+
+1. **Go to your repository settings:**
+   - Navigate to: `https://github.com/YOUR_ORG/calendar-slack-bot/settings/secrets/actions`
+   - Or: Repository → Settings → Secrets and variables → Actions
+
+2. **Add these 3 secrets** (click "New repository secret" for each):
+
+   **`CONFIG_JSON`**
+   - Copy the **entire contents** of your `config.json` file
+   - This includes your username and the `${CALDAV_PASSWORD}` placeholder
+
+   **`CALDAV_PASSWORD`**
+   - Your actual Nextcloud password
+
+   **`SLACK_BOT_TOKEN`**
+   - Your Bot User OAuth Token from Step 2 (starts with `xoxb-`)
+
+3. **Note:** `GITHUB_TOKEN` is automatically provided by GitHub Actions (no need to create it)
+
+## Step 7: Set Up Nextcloud Webhook (Optional)
+
+**Note:** Real-time webhooks require the "Webhooks" app which is currently incompatible with Nextcloud 32+. This step can be skipped - the bot works perfectly with scheduled polling (hourly checks via GitHub Actions). Changes will appear within 1 hour instead of 5-10 minutes.
+
+**If you have Nextcloud ≤25 with the Webhooks app available:**
+
+### Part A: Create GitHub Personal Access Token (PAT)
+
+1. **Go to GitHub token settings:**
+   - Visit: https://github.com/settings/tokens?type=beta
+   - Click **"Generate new token"**
+
+2. **Configure the token:**
+   - Token name: `Triggers calendar-slack-bot on Nextcloud calendar changes`
+   - Expiration: Choose based on your needs (30 days for testing, "No expiration" for production)
+   - **Resource owner:** Select your organization
+   - **Repository access:** "Only select repositories" → Choose `calendar-slack-bot`
+   - **Repository permissions:**
+     - **Contents:** Read and write
+     - (Metadata will be automatically included as required)
+
+3. **Generate and copy:**
+   - Click **"Generate token"**
+   - Copy the token (starts with `github_pat_`)
+
+### Part B: Configure Nextcloud Workflow
+
+1. **Install required apps:**
+   - Apps → Flow category → Install **"Webhooks"** app
+
+2. **Create a new workflow:**
+   - Settings → Flow (or "Ablauf")
+   - Click **"Add new flow"**
+
+3. **Configure the trigger:**
+   - **When:** Select "Item in calendar is created or updated"
+   - **Then:** Select "Send a request to a URL"
+
+4. **Configure the webhook:**
+
+   **URL:**
+   ```
+   https://api.github.com/repos/YOUR_ORG/calendar-slack-bot/dispatches
+   ```
+
+   **Method:** `POST`
+
+   **Headers:**
+   - Name: `Authorization`, Value: `Bearer github_pat_YOUR_TOKEN`
+   - Name: `Accept`, Value: `application/vnd.github.v3+json`
+
+   **Body:**
+   ```json
+   {"event_type":"calendar_changed","client_payload":{}}
+   ```
+
+5. **Save the workflow**
+
+**For everyone else:** Skip this step and rely on scheduled polling (works great!).
+
+## Step 8: First Test Run
+
 Coming next...
