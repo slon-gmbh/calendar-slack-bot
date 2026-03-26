@@ -56,7 +56,7 @@ function normalizeEvent(icalEvent, instanceStart = null) {
   const start = instanceStart || icalEvent.start;
   const end = icalEvent.end || start;
 
-  return {
+  const normalized = {
     id: icalEvent.uid,
     title: icalEvent.summary || '(No title)',
     start: start instanceof Date ? start : new Date(start),
@@ -65,6 +65,16 @@ function normalizeEvent(icalEvent, instanceStart = null) {
     description: icalEvent.description || null,
     isAllDay: icalEvent.datetype === 'date'
   };
+
+  // Debug logging
+  console.log(`[DEBUG] Event: ${normalized.title}`);
+  console.log(`  Raw start:`, start);
+  console.log(`  Normalized start:`, normalized.start);
+  console.log(`  ISO string:`, normalized.start.toISOString());
+  console.log(`  datetype:`, icalEvent.datetype);
+  console.log(`  isAllDay:`, normalized.isAllDay);
+
+  return normalized;
 }
 
 module.exports = {

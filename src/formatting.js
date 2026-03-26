@@ -102,7 +102,16 @@ function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
     timeZone: timezone
   });
 
-  return timeFormat.format(event.start);
+  const formatted = timeFormat.format(event.start);
+
+  // Debug logging
+  console.log(`[DEBUG] Formatting: ${event.title}`);
+  console.log(`  Date object:`, event.start);
+  console.log(`  ISO:`, event.start.toISOString());
+  console.log(`  Timezone:`, timezone);
+  console.log(`  Formatted:`, formatted);
+
+  return formatted;
 }
 
 /**
