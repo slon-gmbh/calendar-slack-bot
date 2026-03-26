@@ -487,9 +487,11 @@ async function runChangeDetection(config, dryRun) {
     const calendar = config.calendars[calId];
     console.log(`Processing calendar: ${calendar.name} (${calId})`);
 
+    let cachedData = null; // Declare outside try block for catch block access
+
     try {
       // Load previous state
-      const cachedData = await loadCacheState(calId, cacheDir);
+      cachedData = await loadCacheState(calId, cacheDir);
 
       // Fetch current events
       const currentEvents = await fetchCalendar(
@@ -747,25 +749,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Setup cache branch
-        run: |
-          # Fetch cache-state branch or create if missing
-          git fetch origin cache-state 2>/dev/null || {
-            echo "Cache branch doesn't exist - creating orphan branch"
-            git checkout --orphan cache-state
-            git rm -rf .
-            git commit --allow-empty -m "chore: initialize cache-state branch"
-            git push origin cache-state
-          }
-
-          # Checkout cache branch
-          git checkout cache-state
-
       - name: Write config
         env:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
@@ -777,11 +760,36 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup cache branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch cache-state branch or create if missing
+          if git fetch origin cache-state 2>/dev/null; then
+            echo "Cache branch exists"
+          else
+            echo "Creating cache-state orphan branch"
+            git checkout --orphan cache-state
+            git rm -rf . --quiet
+            git commit --allow-empty -m "chore: initialize cache-state branch"
+            git push origin cache-state
+            git checkout main
+          fi
+
+          # Use git worktree to work with cache branch alongside main
+          git worktree add /tmp/cache-state cache-state
+
       - name: Run change detection
         env:
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
+          CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          CACHE_DIR: ${{ github.workspace }}
+          CACHE_DIR: /tmp/cache-state
         run: |
           DRY_RUN=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
@@ -793,6 +801,7 @@ jobs:
       - name: Commit cache state
         if: ${{ !inputs.dry_run }}
         run: |
+          cd /tmp/cache-state
           git add *.json
 
           # Check if there are staged changes
