@@ -38,9 +38,12 @@ jobs:
 
       - name: Handle event change
         env:
-          CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           WEBHOOK_PAYLOAD: ${{ inputs.test_payload || toJSON(github.event.client_payload) }}
-        # Note: inputs.dry_run is a string "true"/"false", not a boolean — explicit comparison required
-        run: node src/bot.js --event-changed ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+        run: |
+          DRY_RUN=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN="--dry-run"
+          fi
+          node src/bot.js --event-changed $DRY_RUN

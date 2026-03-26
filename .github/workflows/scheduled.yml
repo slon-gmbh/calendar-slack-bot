@@ -41,7 +41,6 @@ jobs:
       - name: Run scheduled digests
         if: github.event_name == 'schedule'
         env:
-          CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: node src/bot.js --scheduled
@@ -49,13 +48,16 @@ jobs:
       - name: Run manual digest
         if: github.event_name == 'workflow_dispatch'
         env:
-          CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
-          # Note: inputs.dry_run is a string "true"/"false", not a boolean — explicit comparison required
+          DRY_RUN=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN="--dry-run"
+          fi
+
           if [ "${{ inputs.digest_type }}" = "scheduled" ]; then
-            node src/bot.js --scheduled ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+            node src/bot.js --scheduled $DRY_RUN
           else
-            node src/bot.js --${{ inputs.digest_type }}-digest ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+            node src/bot.js --${{ inputs.digest_type }}-digest $DRY_RUN
           fi
