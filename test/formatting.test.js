@@ -155,7 +155,7 @@ test('renderBundledNotification should group multiple changes by type', () => {
   assert.match(result, /3 calendar changes/);
   assert.match(result, /➕.*1 new event/);
   assert.match(result, /🗑️.*1 cancelled/);
-  assert.match(result, /✏️.*1 updated/);
+  assert.match(result, /✏️.*1 modified/);
   assert.match(result, /New Meeting/);
   assert.match(result, /Cancelled Event/);
   assert.match(result, /Moved Meeting/);

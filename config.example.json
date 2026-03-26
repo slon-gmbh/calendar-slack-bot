@@ -1,5 +1,6 @@
 {
   "locale": "en-US",
+  "timezone": "UTC",
   "error_channel": "C01234ERROR",
   "caldav_credentials": {
     "username": "${CALDAV_USERNAME}",
@@ -22,6 +23,7 @@
       "canvas_id": "F9876CANVAS",
       "calendars": ["team-calendar", "project-x"],
       "locale": "de-DE",
+      "timezone": "Europe/Berlin",
       "view": "merged",
       "event_detail": "standard",
       "digest_style": "full",

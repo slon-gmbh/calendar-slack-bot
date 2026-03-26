@@ -8,6 +8,59 @@
 const CALENDAR_INDICATORS = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
 
 /**
+ * Locale-specific translations
+ */
+const TRANSLATIONS = {
+  'de-DE': {
+    week: 'KW',
+    events: 'Termine',
+    event: 'Termin',
+    calendars: 'Kalender',
+    calendar: 'Kalender',
+    fullSchedule: 'Komplette Übersicht →',
+    nothingScheduled: '(nichts geplant)',
+    today: 'Heute',
+    tomorrow: 'Morgen',
+    new: 'Neu',
+    cancelled: 'Abgesagt',
+    moved: 'Verschoben',
+    updated: 'Aktualisiert',
+    renamed: 'umbenannt',
+    locationChanged: 'Ort geändert',
+    calendarChanges: 'Kalenderänderungen',
+    newEvents: 'neue',
+    cancelledEvents: 'abgesagt',
+    modifiedEvents: 'geändert'
+  },
+  'en-US': {
+    week: 'Week',
+    events: 'events',
+    event: 'event',
+    calendars: 'calendars',
+    calendar: 'calendar',
+    fullSchedule: 'Full schedule →',
+    nothingScheduled: '(nothing scheduled)',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    new: 'New',
+    cancelled: 'Cancelled',
+    moved: 'Moved',
+    updated: 'Updated',
+    renamed: 'renamed',
+    locationChanged: 'location changed',
+    calendarChanges: 'calendar changes',
+    newEvents: 'new',
+    cancelledEvents: 'cancelled',
+    modifiedEvents: 'modified'
+  }
+};
+
+function getTranslation(locale, key) {
+  const lang = TRANSLATIONS[locale] || TRANSLATIONS['en-US'];
+  return lang[key] || TRANSLATIONS['en-US'][key];
+}
+
+/**
  * Assign color indicators to calendars
  * @param {Array} events - Events with calendarName property
  * @returns {Map} Map of calendar name to indicator
@@ -29,12 +82,13 @@ function assignCalendarIndicators(events) {
 }
 
 /**
- * Format event time based on locale
+ * Format event time based on locale and timezone
  * @param {Object} event - Event object with start, end, isAllDay
  * @param {string} locale - BCP 47 locale (e.g., 'en-US', 'de-DE')
+ * @param {string} timezone - IANA timezone (e.g., 'Europe/Berlin', 'America/New_York')
  * @returns {string} Formatted time string
  */
-function formatEventTime(event, locale = 'en-US') {
+function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
   if (event.isAllDay) {
     return '📅';
   }
@@ -42,7 +96,8 @@ function formatEventTime(event, locale = 'en-US') {
   const timeFormat = new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: locale.startsWith('en-US')
+    hour12: locale.startsWith('en-US'),
+    timeZone: timezone
   });
 
   return timeFormat.format(event.start);
@@ -51,12 +106,25 @@ function formatEventTime(event, locale = 'en-US') {
 /**
  * Format date for display
  */
-function formatDate(date, locale = 'en-US') {
+function formatDate(date, locale = 'en-US', timezone = 'UTC') {
   return new Intl.DateTimeFormat(locale, {
     weekday: 'long',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: timezone
   }).format(date);
+}
+
+/**
+ * Format date range for header
+ */
+function formatDateRange(startDate, endDate, locale = 'en-US', timezone = 'UTC') {
+  const dateFormat = new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    timeZone: timezone
+  });
+  return `${dateFormat.format(startDate)} — ${dateFormat.format(endDate)}`;
 }
 
 /**
@@ -75,17 +143,17 @@ function getWeekNumber(date) {
  * @param {Array} events - Array of event objects
  * @param {Object} dateRange - { start: Date, end: Date }
  * @param {string} locale - Locale for formatting
- * @param {Object} options - { showEmptyDays, viewMode, eventDetail }
+ * @param {Object} options - { showEmptyDays, viewMode, eventDetail, timezone }
  * @returns {string} Formatted week view
  */
 function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
-  const { showEmptyDays = false, viewMode = 'merged', eventDetail = 'standard' } = options;
+  const { showEmptyDays = false, viewMode = 'merged', eventDetail = 'standard', timezone = 'UTC' } = options;
 
   const weekNum = getWeekNumber(dateRange.start);
-  const startDate = formatDate(dateRange.start, locale).split(',')[0]; // Just day name
-  const endDate = formatDate(dateRange.end, locale).split(',')[0];
+  const weekLabel = getTranslation(locale, 'week');
+  const dateRangeStr = formatDateRange(dateRange.start, dateRange.end, locale, timezone);
 
-  let output = `📅 Week ${weekNum} · ${startDate} — ${endDate}\n\n`;
+  let output = `📅 ${weekLabel} ${weekNum} · ${dateRangeStr}\n\n`;
 
   // Assign calendar indicators (only if multiple calendars)
   const calendarIndicators = assignCalendarIndicators(events);
@@ -112,7 +180,7 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
   // Render each day
   for (const [dayKey, dayEvents] of eventsByDay) {
     const date = new Date(dayKey + 'T12:00:00Z');
-    const dayName = formatDate(date, locale);
+    const dayName = formatDate(date, locale, timezone);
 
     if (dayEvents.length === 0 && !showEmptyDays) {
       continue;
@@ -122,7 +190,7 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
     output += `━━━━━━━━━━━━━━━━━━━━\n`;
 
     if (dayEvents.length === 0) {
-      output += `(nothing scheduled)\n\n`;
+      output += `${getTranslation(locale, 'nothingScheduled')}\n\n`;
       continue;
     }
 
@@ -134,7 +202,7 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
     });
 
     for (const event of sorted) {
-      const time = formatEventTime(event, locale);
+      const time = formatEventTime(event, locale, timezone);
       const indicator = calendarIndicators.get(event.calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (event.calendarName ? ` · ${event.calendarName}` : '');
       const location = eventDetail !== 'minimal' && event.location ? ` — ${event.location}` : '';
@@ -148,11 +216,13 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
   // Summary with calendar legend
   const totalEvents = events.length;
   const uniqueCalendars = new Set(events.map(e => e.calendarName).filter(Boolean)).size;
-  output += `📆 ${totalEvents} event${totalEvents !== 1 ? 's' : ''}`;
+  const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
+  output += `📆 ${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {
-    output += ` · ${uniqueCalendars} calendar${uniqueCalendars !== 1 ? 's' : ''}`;
+    const calendarLabel = uniqueCalendars === 1 ? getTranslation(locale, 'calendar') : getTranslation(locale, 'calendars');
+    output += ` · ${uniqueCalendars} ${calendarLabel}`;
   }
-  output += ` · Full schedule →`;
+  output += ` · ${getTranslation(locale, 'fullSchedule')}`;
 
   // Add calendar legend if multiple calendars
   if (calendarIndicators.size > 0) {
@@ -171,44 +241,46 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
  * Render change notification for a single event change
  * @param {Object} diff - Diff object from diffEvents
  * @param {string} locale - Locale for formatting
+ * @param {string} timezone - IANA timezone
  * @returns {string} Formatted notification
  */
-function renderChangeNotification(diff, locale = 'en-US') {
+function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
   const { type, event, old, new: newData, calendarName } = diff;
 
   const dateStr = new Intl.DateTimeFormat(locale, {
     weekday: 'short',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: timezone
   }).format(event.start);
 
   const calendar = calendarName ? ` · ${calendarName}` : '';
 
   switch (type) {
     case 'new':
-      const newTime = formatEventTime(event, locale);
-      return `➕ **New:** ${event.title} · ${dateStr} · ${newTime}${calendar}`;
+      const newTime = formatEventTime(event, locale, timezone);
+      return `➕ **${getTranslation(locale, 'new')}:** ${event.title} · ${dateStr} · ${newTime}${calendar}`;
 
     case 'deleted':
-      const delTime = formatEventTime(event, locale);
-      return `🗑️ **Cancelled:** ${event.title} · ${dateStr} · ${delTime}${calendar}`;
+      const delTime = formatEventTime(event, locale, timezone);
+      return `🗑️ **${getTranslation(locale, 'cancelled')}:** ${event.title} · ${dateStr} · ${delTime}${calendar}`;
 
     case 'time_changed':
-      const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale);
-      const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale);
-      return `✏️ **Moved:** ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
+      const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
+      return `✏️ **${getTranslation(locale, 'moved')}:** ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
 
     case 'title_changed':
-      const titleTime = formatEventTime(event, locale);
-      return `✏️ **Updated:** ${event.title} · ${dateStr} · ${titleTime} (renamed)${calendar}`;
+      const titleTime = formatEventTime(event, locale, timezone);
+      return `✏️ **${getTranslation(locale, 'updated')}:** ${event.title} · ${dateStr} · ${titleTime} (${getTranslation(locale, 'renamed')})${calendar}`;
 
     case 'location_changed':
-      const locTime = formatEventTime(event, locale);
-      return `✏️ **Updated:** ${event.title} · ${dateStr} · ${locTime} (location changed)${calendar}`;
+      const locTime = formatEventTime(event, locale, timezone);
+      return `✏️ **${getTranslation(locale, 'updated')}:** ${event.title} · ${dateStr} · ${locTime} (${getTranslation(locale, 'locationChanged')})${calendar}`;
 
     default:
-      const defaultTime = formatEventTime(event, locale);
-      return `✏️ **Updated:** ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
+      const defaultTime = formatEventTime(event, locale, timezone);
+      return `✏️ **${getTranslation(locale, 'updated')}:** ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
   }
 }
 
@@ -216,13 +288,14 @@ function renderChangeNotification(diff, locale = 'en-US') {
  * Render bundled change notifications (debounced)
  * @param {Array} diffs - Array of diff objects
  * @param {string} locale - Locale for formatting
+ * @param {string} timezone - IANA timezone
  * @returns {string} Formatted bundled notification
  */
-function renderBundledNotification(diffs, locale = 'en-US') {
+function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
   if (diffs.length === 0) return '';
-  if (diffs.length === 1) return renderChangeNotification(diffs[0], locale);
+  if (diffs.length === 1) return renderChangeNotification(diffs[0], locale, timezone);
 
-  let output = `📬 **${diffs.length} calendar changes**\n\n`;
+  let output = `📬 **${diffs.length} ${getTranslation(locale, 'calendarChanges')}**\n\n`;
 
   // Group by change type
   const grouped = {
@@ -233,15 +306,17 @@ function renderBundledNotification(diffs, locale = 'en-US') {
 
   // Render new events
   if (grouped.new.length > 0) {
-    output += `➕ **${grouped.new.length} new event${grouped.new.length !== 1 ? 's' : ''}:**\n`;
+    const label = grouped.new.length === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
+    output += `➕ **${grouped.new.length} ${getTranslation(locale, 'newEvents')} ${label}:**\n`;
     for (const diff of grouped.new) {
       const { event, calendarName } = diff;
       const dateStr = new Intl.DateTimeFormat(locale, {
         weekday: 'short',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: timezone
       }).format(event.start);
-      const time = formatEventTime(event, locale);
+      const time = formatEventTime(event, locale, timezone);
       const calendar = calendarName ? ` · ${calendarName}` : '';
       output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
     }
@@ -250,15 +325,17 @@ function renderBundledNotification(diffs, locale = 'en-US') {
 
   // Render cancelled events
   if (grouped.deleted.length > 0) {
-    output += `🗑️ **${grouped.deleted.length} cancelled:**\n`;
+    const label = grouped.deleted.length === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
+    output += `🗑️ **${grouped.deleted.length} ${getTranslation(locale, 'cancelledEvents')} ${label}:**\n`;
     for (const diff of grouped.deleted) {
       const { event, calendarName } = diff;
       const dateStr = new Intl.DateTimeFormat(locale, {
         weekday: 'short',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: timezone
       }).format(event.start);
-      const time = formatEventTime(event, locale);
+      const time = formatEventTime(event, locale, timezone);
       const calendar = calendarName ? ` · ${calendarName}` : '';
       output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
     }
@@ -267,24 +344,26 @@ function renderBundledNotification(diffs, locale = 'en-US') {
 
   // Render modified events
   if (grouped.modified.length > 0) {
-    output += `✏️ **${grouped.modified.length} updated:**\n`;
+    const label = grouped.modified.length === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
+    output += `✏️ **${grouped.modified.length} ${getTranslation(locale, 'modifiedEvents')} ${label}:**\n`;
     for (const diff of grouped.modified) {
       const { type, event, old, new: newData, calendarName } = diff;
       const dateStr = new Intl.DateTimeFormat(locale, {
         weekday: 'short',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: timezone
       }).format(event.start);
       const calendar = calendarName ? ` · ${calendarName}` : '';
 
       if (type === 'time_changed') {
-        const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale);
-        const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale);
+        const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
+        const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
         output += `• ${event.title} · ${dateStr} · ${oldTime} → ${newTime}${calendar}\n`;
       } else if (type === 'title_changed') {
-        output += `• ${event.title} (renamed) · ${dateStr}${calendar}\n`;
+        output += `• ${event.title} (${getTranslation(locale, 'renamed')}) · ${dateStr}${calendar}\n`;
       } else if (type === 'location_changed') {
-        output += `• ${event.title} (location changed) · ${dateStr}${calendar}\n`;
+        output += `• ${event.title} (${getTranslation(locale, 'locationChanged')}) · ${dateStr}${calendar}\n`;
       } else {
         output += `• ${event.title} · ${dateStr}${calendar}\n`;
       }
@@ -299,13 +378,13 @@ function renderBundledNotification(diffs, locale = 'en-US') {
  * @param {Array} events - Array of event objects
  * @param {Object} dateRange - { start: Date, end: Date } (typically today + tomorrow)
  * @param {string} locale - Locale for formatting
- * @param {Object} options - Rendering options
+ * @param {Object} options - Rendering options including timezone
  * @returns {string} Formatted daily view
  */
 function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
-  const { showEmptyDays = false, eventDetail = 'standard' } = options;
+  const { showEmptyDays = false, eventDetail = 'standard', timezone = 'UTC' } = options;
 
-  let output = `📅 Daily Schedule\n\n`;
+  let output = `📅 ${getTranslation(locale, 'today')} / ${getTranslation(locale, 'tomorrow')}\n\n`;
 
   // Assign calendar indicators
   const calendarIndicators = assignCalendarIndicators(events);
@@ -338,8 +417,8 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
   for (const [dayKey, dayEvents] of eventsByDay) {
     const [year, month, day] = dayKey.split('-').map(Number);
     const date = new Date(year, month - 1, day, 12, 0, 0);
-    const dayName = formatDate(date, locale);
-    const label = dayKey === todayKey ? 'Today' : 'Tomorrow';
+    const dayName = formatDate(date, locale, timezone);
+    const label = dayKey === todayKey ? getTranslation(locale, 'today') : getTranslation(locale, 'tomorrow');
 
     if (dayEvents.length === 0 && !showEmptyDays) {
       continue;
@@ -349,7 +428,7 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
     output += `━━━━━━━━━━━━━━━━━━━━\n`;
 
     if (dayEvents.length === 0) {
-      output += `(nothing scheduled)\n\n`;
+      output += `${getTranslation(locale, 'nothingScheduled')}\n\n`;
       continue;
     }
 
@@ -361,7 +440,7 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
     });
 
     for (const event of sorted) {
-      const time = formatEventTime(event, locale);
+      const time = formatEventTime(event, locale, timezone);
       const indicator = calendarIndicators.get(event.calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (event.calendarName ? ` · ${event.calendarName}` : '');
       const location = eventDetail !== 'minimal' && event.location ? ` — ${event.location}` : '';
@@ -375,11 +454,13 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
   // Summary
   const totalEvents = events.length;
   const uniqueCalendars = new Set(events.map(e => e.calendarName).filter(Boolean)).size;
-  output += `📆 ${totalEvents} event${totalEvents !== 1 ? 's' : ''}`;
+  const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
+  output += `📆 ${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {
-    output += ` · ${uniqueCalendars} calendar${uniqueCalendars !== 1 ? 's' : ''}`;
+    const calendarLabel = uniqueCalendars === 1 ? getTranslation(locale, 'calendar') : getTranslation(locale, 'calendars');
+    output += ` · ${uniqueCalendars} ${calendarLabel}`;
   }
-  output += ` · Full schedule →`;
+  output += ` · ${getTranslation(locale, 'fullSchedule')}`;
 
   // Add calendar legend if multiple calendars
   if (calendarIndicators.size > 0) {

@@ -293,6 +293,51 @@ Store your sensitive configuration and credentials as encrypted GitHub Secrets.
 
 **For everyone else:** Skip this step and rely on scheduled polling (works great!).
 
-## Step 8: First Test Run
+## Step 8: First Test Run (Dry Run)
+
+Test the bot using GitHub Actions' manual trigger with dry-run mode. This validates your configuration without posting to Slack.
+
+1. **Go to GitHub Actions:**
+   - Visit: `https://github.com/YOUR_ORG/calendar-slack-bot/actions`
+   - Or: Repository → Actions tab
+
+2. **Select the scheduled workflow:**
+   - In the left sidebar, click **"Scheduled Digests"**
+
+3. **Run workflow manually:**
+   - Click **"Run workflow"** dropdown (top right)
+   - Configure:
+     - **Branch:** `main`
+     - **Digest type:** `weekly` (forces a digest regardless of schedule)
+     - **Dry run:** ✅ **Check this box**
+   - Click **"Run workflow"**
+
+4. **Check the results:**
+   - Click on the workflow run that appears
+   - Click on the job name to see logs
+   - Look for `[DRY RUN]` messages showing:
+     - Calendar events fetched from Nextcloud
+     - Preview of messages that would be posted
+     - Canvas content that would be updated
+   - Should end with: `[DRY RUN] No Slack API calls were made.`
+
+**Common issues:**
+- If tests fail: Check that all code is pushed and up to date
+- If config errors: Verify `CONFIG_JSON` secret is valid JSON
+- If CalDAV errors: Check `CALDAV_PASSWORD` secret and CalDAV URLs
+- If no events shown: Verify you have events in your calendar
+
+**Success looks like:**
+```
+Running weekly digest...
+[DRY RUN] Would post to channel C01234ABC:
+📅 Week 13 · Monday — Sunday
+...
+[DRY RUN] Would update Canvas F98765XYZ:
+...
+[DRY RUN] No Slack API calls were made.
+```
+
+## Step 9: First Live Run
 
 Coming next...

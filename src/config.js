@@ -97,6 +97,26 @@ function validateConfig(config) {
     throw new Error(`Config error: invalid locale '${resolved.locale}' - must be a valid BCP 47 language tag`);
   }
 
+  // Validate timezone if present (IANA timezone)
+  if (resolved.timezone) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: resolved.timezone });
+    } catch (e) {
+      throw new Error(`Config error: invalid timezone '${resolved.timezone}' - must be a valid IANA timezone (e.g., 'Europe/Berlin', 'America/New_York')`);
+    }
+  }
+
+  // Validate channel-specific timezones
+  for (const channel of resolved.channels) {
+    if (channel.timezone) {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: channel.timezone });
+      } catch (e) {
+        throw new Error(`Config error: invalid timezone '${channel.timezone}' in channel '${channel.id}' - must be a valid IANA timezone`);
+      }
+    }
+  }
+
   return resolved;
 }
 

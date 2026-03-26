@@ -91,17 +91,18 @@ async function postDigestForChannel(config, channel, type, dryRun) {
 
   // Render and post digest
   const locale = channel.locale || config.locale;
+  const timezone = channel.timezone || config.timezone || 'UTC';
   const dateRange = type === 'daily'
     ? getDailyRange()
     : getCurrentWeekRange();
 
   const digest = type === 'daily'
-    ? renderDailyView(allEvents, dateRange, locale, channel)
-    : renderWeekView(allEvents, dateRange, locale, channel);
+    ? renderDailyView(allEvents, dateRange, locale, { ...channel, timezone })
+    : renderWeekView(allEvents, dateRange, locale, { ...channel, timezone });
   await postMessage(channel.id, digest, dryRun);
 
   // Update Canvas (always full week)
-  const canvasContent = renderCanvasContent(allEvents, { locale, ...channel });
+  const canvasContent = renderCanvasContent(allEvents, { locale, timezone, ...channel });
   await updateCanvas(channel.canvas_id, canvasContent, dryRun);
 }
 
@@ -230,7 +231,8 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
     if (pending.expired && pending.diffs.length > 0) {
       console.log(`Debounce window expired for channel ${channel.id} - posting ${pending.diffs.length} stale diffs`);
       const locale = channel.locale || config.locale;
-      const staleNotification = renderBundledNotification(pending.diffs, locale);
+      const timezone = channel.timezone || config.timezone || 'UTC';
+      const staleNotification = renderBundledNotification(pending.diffs, locale, timezone);
       await postMessage(channel.id, staleNotification, dryRun);
     }
 
@@ -247,7 +249,8 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
 
     // Post bundled notification
     const locale = channel.locale || config.locale;
-    const notification = renderBundledNotification(allDiffs, locale);
+    const timezone = channel.timezone || config.timezone || 'UTC';
+    const notification = renderBundledNotification(allDiffs, locale, timezone);
     await postMessage(channel.id, notification, dryRun);
 
     // Clear debounce cache
