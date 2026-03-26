@@ -55,3 +55,40 @@ test('loadCacheState should return null for corrupt JSON', async () => {
 
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
 });
+
+test('saveCacheState should write valid JSON with events', async () => {
+  await mkdir(TEST_CACHE_DIR, { recursive: true });
+
+  const events = [
+    { id: 'e1', title: 'Meeting', start: '2026-03-26T10:00:00.000Z' }
+  ];
+
+  await saveCacheState('test-calendar', events, null, TEST_CACHE_DIR);
+
+  const saved = await loadCacheState('test-calendar', TEST_CACHE_DIR);
+
+  assert.deepStrictEqual(saved.events, events);
+  assert.ok(saved.updated_at);
+  assert.ok(!saved.last_error);
+
+  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+});
+
+test('saveCacheState should include error metadata', async () => {
+  await mkdir(TEST_CACHE_DIR, { recursive: true });
+
+  const events = [];
+  const errorState = {
+    last_error: 'CalDAV timeout',
+    error_notified_at: '2026-03-26T10:00:00Z'
+  };
+
+  await saveCacheState('error-calendar', events, errorState, TEST_CACHE_DIR);
+
+  const saved = await loadCacheState('error-calendar', TEST_CACHE_DIR);
+
+  assert.strictEqual(saved.last_error, 'CalDAV timeout');
+  assert.strictEqual(saved.error_notified_at, '2026-03-26T10:00:00Z');
+
+  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+});
