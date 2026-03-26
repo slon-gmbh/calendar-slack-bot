@@ -153,7 +153,7 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
   const weekLabel = getTranslation(locale, 'week');
   const dateRangeStr = formatDateRange(dateRange.start, dateRange.end, locale, timezone);
 
-  let output = `📅 ${weekLabel} ${weekNum} · ${dateRangeStr}\n\n`;
+  let output = `📅 **${weekLabel} ${weekNum} · ${dateRangeStr}**\n\n`;
 
   // Assign calendar indicators (only if multiple calendars)
   const calendarIndicators = assignCalendarIndicators(events);
@@ -384,7 +384,7 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
 function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
   const { showEmptyDays = false, eventDetail = 'standard', timezone = 'UTC' } = options;
 
-  let output = `📅 ${getTranslation(locale, 'today')} / ${getTranslation(locale, 'tomorrow')}\n\n`;
+  let output = `📅 **${getTranslation(locale, 'today')} / ${getTranslation(locale, 'tomorrow')}**\n\n`;
 
   // Assign calendar indicators
   const calendarIndicators = assignCalendarIndicators(events);
