@@ -29,3 +29,13 @@ test('loadCacheState should load valid cache file', async () => {
 
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
 });
+
+test('loadCacheState should return null for missing file', async () => {
+  await mkdir(TEST_CACHE_DIR, { recursive: true });
+
+  const result = await loadCacheState('nonexistent-calendar', TEST_CACHE_DIR);
+
+  assert.strictEqual(result, null);
+
+  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+});
