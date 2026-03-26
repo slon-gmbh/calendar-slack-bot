@@ -81,12 +81,18 @@ async function postDigestForChannel(config, channel, type, dryRun) {
   const allEvents = [];
   for (const calId of channel.calendars) {
     const calendar = config.calendars[calId];
-    const events = await fetchCalendar(
-      calendar.caldav_url,
-      config.caldav_credentials,
-      getCurrentWeekRange()
-    );
-    allEvents.push(...events.map(e => ({ ...e, calendarName: calendar.name })));
+    try {
+      const events = await fetchCalendar(
+        calendar.caldav_url,
+        config.caldav_credentials,
+        getCurrentWeekRange()
+      );
+      console.log(`Fetched ${events.length} events from calendar '${calendar.name}' (${calId})`);
+      allEvents.push(...events.map(e => ({ ...e, calendarName: calendar.name })));
+    } catch (error) {
+      console.error(`Failed to fetch calendar '${calendar.name}' (${calId}): ${error.message}`);
+      // Continue with other calendars instead of failing completely
+    }
   }
 
   // Render and post digest
