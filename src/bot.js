@@ -30,6 +30,173 @@ const args = process.argv.slice(2);
 const mode = args.find(arg => arg.startsWith('--') && !arg.startsWith('--dry'));
 const dryRun = args.includes('--dry-run');
 
+/**
+ * Check if error notification should be posted (suppression logic)
+ * @param {string} calendarId - Calendar identifier
+ * @param {string} errorMessage - Current error message
+ * @param {Object} cachedData - Cached calendar data with error state
+ * @param {string} cacheDir - Cache directory
+ * @returns {Promise<boolean>} True if should post notification
+ */
+async function shouldPostErrorNotification(calendarId, errorMessage, cachedData, cacheDir) {
+  if (!cachedData) {
+    return true; // First run, always notify on error
+  }
+
+  const lastError = cachedData.last_error;
+  const lastNotified = cachedData.error_notified_at;
+
+  // No previous error, this is first failure
+  if (!lastError) {
+    return true;
+  }
+
+  // Different error, notify
+  if (lastError !== errorMessage) {
+    return true;
+  }
+
+  // Same error - check if 24 hours elapsed since last notification
+  if (lastNotified) {
+    const lastNotifiedDate = new Date(lastNotified);
+    const now = new Date();
+    const hoursSinceNotification = (now - lastNotifiedDate) / (1000 * 60 * 60);
+
+    if (hoursSinceNotification >= 24) {
+      return true; // 24 hours elapsed, notify again
+    }
+  }
+
+  console.log(`Suppressing duplicate error notification for ${calendarId} (last notified: ${lastNotified})`);
+  return false;
+}
+
+/**
+ * Route detected diffs to subscribed channels (polling mode - no debounce)
+ * @param {Object} config - Bot configuration
+ * @param {string} calendarId - Calendar identifier
+ * @param {Array} diffsWithCalendar - Diffs with calendar name attached
+ * @param {boolean} dryRun - Dry run mode flag
+ */
+async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, dryRun) {
+  for (const channel of config.channels) {
+    // Check if channel subscribes to this calendar
+    if (!channel.calendars.includes(calendarId)) {
+      continue;
+    }
+
+    // Filter diffs by notification settings
+    const notifiableDiffs = diffsWithCalendar.filter(diff =>
+      shouldNotifyNow(diff, channel)
+    );
+
+    if (notifiableDiffs.length === 0) {
+      console.log(`Change detected for calendar ${calendarId} but channel ${channel.id} has notifications filtered - skipping`);
+      continue;
+    }
+
+    // Post bundled notification (polling mode - no debounce)
+    const locale = channel.locale || config.locale;
+    const timezone = channel.timezone || config.timezone || 'UTC';
+    const notification = renderBundledNotification(notifiableDiffs, locale, timezone);
+
+    console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
+    await postMessage(channel.id, notification, dryRun);
+  }
+}
+
+/**
+ * Run change detection polling
+ * Fetch all calendars, diff against cache, post bundled notifications
+ */
+async function runChangeDetection(config, dryRun) {
+  console.log('Running change detection...');
+
+  const cacheDir = process.env.CACHE_DIR;
+  if (!cacheDir) {
+    throw new Error('CACHE_DIR environment variable not set');
+  }
+
+  const { loadCacheState, saveCacheState } = require('./cache.js');
+  const dateRange = getChangeDetectionRange();
+
+  console.log(`Checking calendars for changes (${dateRange.start.toISOString()} to ${dateRange.end.toISOString()})`);
+
+  // Process each calendar
+  for (const calId of Object.keys(config.calendars)) {
+    const calendar = config.calendars[calId];
+    console.log(`Processing calendar: ${calendar.name} (${calId})`);
+
+    let cachedData = null; // Declare outside try block for catch block access
+
+    try {
+      // Load previous state
+      cachedData = await loadCacheState(calId, cacheDir);
+
+      // Fetch current events
+      const currentEvents = await fetchCalendar(
+        calendar.caldav_url,
+        config.caldav_credentials,
+        dateRange
+      );
+
+      if (!cachedData) {
+        // Baseline mode - no previous state
+        console.log(`No previous state for ${calId} - establishing baseline`);
+        await saveCacheState(calId, currentEvents, null, cacheDir);
+        continue;
+      }
+
+      // Diff previous vs current
+      const previousEvents = cachedData.events || [];
+      const diffs = diffEvents(previousEvents, currentEvents);
+
+      if (diffs.length === 0) {
+        console.log(`No changes detected for ${calId}`);
+        await saveCacheState(calId, currentEvents, null, cacheDir);
+        continue;
+      }
+
+      console.log(`Detected ${diffs.length} change(s) for ${calId}`);
+
+      // Add calendar name to diffs
+      const diffsWithCalendar = diffs.map(d => ({ ...d, calendarName: calendar.name }));
+
+      // Route to channels
+      await routeChangeDetectionDiffs(config, calId, diffsWithCalendar, dryRun);
+
+      // Update cache (clear any previous error state)
+      await saveCacheState(calId, currentEvents, null, cacheDir);
+
+    } catch (error) {
+      console.error(`Failed to fetch calendar '${calendar.name}' (${calId}): ${error.message}`);
+
+      // Check if we should post error notification (suppression logic)
+      const shouldNotify = await shouldPostErrorNotification(calId, error.message, cachedData, cacheDir);
+
+      if (shouldNotify) {
+        await postErrorNotification(
+          config.error_channel,
+          `Calendar fetch failed: ${calendar.name}\n\n${error.message}`,
+          dryRun
+        );
+      }
+
+      // Save error state (don't update events - preserve last known good)
+      if (cachedData) {
+        await saveCacheState(calId, cachedData.events, {
+          last_error: error.message,
+          error_notified_at: shouldNotify ? new Date().toISOString() : cachedData.error_notified_at
+        }, cacheDir);
+      }
+
+      // Continue with other calendars
+    }
+  }
+
+  console.log('Change detection complete');
+}
+
 async function main() {
   try {
     const config = await loadConfig();
@@ -42,8 +209,10 @@ async function main() {
       await runDailyDigest(config, dryRun, true);
     } else if (mode === '--event-changed') {
       await runEventChanged(config, dryRun);
+    } else if (mode === '--detect-changes') {
+      await runChangeDetection(config, dryRun);
     } else {
-      console.error('Usage: node bot.js [--scheduled|--weekly-digest|--daily-digest|--event-changed] [--dry-run]');
+      console.error('Usage: node bot.js [--scheduled|--weekly-digest|--daily-digest|--event-changed|--detect-changes] [--dry-run]');
       process.exit(1);
     }
 
