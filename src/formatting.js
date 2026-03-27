@@ -318,9 +318,9 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
       break;
   }
 
-  // Add calendar legend if indicator is present
+  // Add calendar legend with proper separation
   if (indicator && calendarName) {
-    message += `\n\n${indicator} ${calendarName}`;
+    message += `\n\n_${indicator} ${calendarName}_`;
   }
 
   return message;
@@ -453,12 +453,15 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
     }
   }
 
-  // Add calendar legend
+  // Add calendar legend with proper separation
   if (calendarIndicators.size > 0) {
-    output += '\n';
+    output += '\n\n_';
+    const legendItems = [];
     for (const [calName, indicator] of calendarIndicators) {
-      output += `${indicator} ${calName}  `;
+      legendItems.push(`${indicator} ${calName}`);
     }
+    output += legendItems.join('  ');
+    output += '_';
   }
 
   return output.trim();
