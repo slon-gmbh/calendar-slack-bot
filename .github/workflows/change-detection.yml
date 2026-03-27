@@ -1,0 +1,87 @@
+name: Change Detection
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours (user-configurable)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no Slack API calls or cache commits)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for cache branch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write config
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: printf '%s' "$CONFIG_JSON" > config.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup cache branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch cache-state branch or create if missing
+          if git fetch origin cache-state 2>/dev/null; then
+            echo "Cache branch exists"
+          else
+            echo "Creating cache-state orphan branch"
+            git checkout --orphan cache-state
+            git rm -rf . --quiet
+            git commit --allow-empty -m "chore: initialize cache-state branch"
+            git push origin cache-state
+            git checkout main
+          fi
+
+          # Use git worktree to work with cache branch alongside main
+          git worktree add /tmp/cache-state cache-state
+
+      - name: Run change detection
+        env:
+          CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
+          CALDAV_USERNAME: ${{ secrets.CALDAV_USERNAME }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CACHE_DIR: /tmp/cache-state
+        run: |
+          DRY_RUN=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN="--dry-run"
+          fi
+
+          node src/bot.js --detect-changes $DRY_RUN
+
+      - name: Commit cache state
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd /tmp/cache-state
+          git add *.json
+
+          # Check if there are staged changes
+          if git diff --staged --quiet; then
+            echo "No cache changes to commit"
+          else
+            git commit -m "chore: update calendar state cache $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push --force origin cache-state
+          fi
