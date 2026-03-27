@@ -228,3 +228,78 @@ test('renderCanvasContent should filter to current week', () => {
   assert.match(result, /This Week Event/);
   assert.ok(!result.includes('Next Week Event'), 'Should not include next week events');
 });
+
+test('renderBundledNotification should show color indicators for single calendar', () => {
+  // Issue #8: Change notifications should show color indicators instead of text names
+  const diffs = [
+    {
+      type: 'new',
+      event: {
+        id: 'e1',
+        title: 'New Meeting',
+        start: new Date('2026-03-25T14:00:00Z'),
+        isAllDay: false
+      },
+      calendarName: 'Team'
+    }
+  ];
+
+  const result = renderBundledNotification(diffs, 'en-US');
+
+  // Should show color indicator (🟦, 🟩, etc.) not text name "· Team"
+  assert.ok(result.includes('🟦') || result.includes('🟩') || result.includes('🟨') ||
+            result.includes('🟧') || result.includes('🟪') || result.includes('🟥') || result.includes('⬜'),
+            'Should show color indicator');
+  assert.ok(!result.includes('· Team'), 'Should not show text calendar name');
+});
+
+test('renderBundledNotification should assign consistent colors to same calendar', () => {
+  // Issue #8: Same calendar should get same color across different messages
+  const diffsTeam = [
+    {
+      type: 'new',
+      event: {
+        id: 'e1',
+        title: 'Team Event',
+        start: new Date('2026-03-25T14:00:00Z'),
+        isAllDay: false
+      },
+      calendarName: 'Team'
+    }
+  ];
+
+  const diffsVorstand = [
+    {
+      type: 'new',
+      event: {
+        id: 'e2',
+        title: 'Vorstand Event',
+        start: new Date('2026-03-25T15:00:00Z'),
+        isAllDay: false
+      },
+      calendarName: 'Vorstand'
+    }
+  ];
+
+  const resultTeam = renderBundledNotification(diffsTeam, 'en-US');
+  const resultVorstand = renderBundledNotification(diffsVorstand, 'en-US');
+
+  // Extract color indicators from results
+  const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+  const teamColor = indicators.find(ind => resultTeam.includes(ind));
+  const vorstandColor = indicators.find(ind => resultVorstand.includes(ind));
+
+  // Both should have color indicators
+  assert.ok(teamColor, 'Team should have color indicator');
+  assert.ok(vorstandColor, 'Vorstand should have color indicator');
+
+  // They should be different colors
+  assert.notEqual(teamColor, vorstandColor, 'Different calendars should have different colors');
+
+  // Now test with both calendars in one message - colors should stay consistent
+  const diffsBoth = [...diffsTeam, ...diffsVorstand];
+  const resultBoth = renderBundledNotification(diffsBoth, 'en-US');
+
+  assert.ok(resultBoth.includes(teamColor), 'Team should keep same color in multi-calendar message');
+  assert.ok(resultBoth.includes(vorstandColor), 'Vorstand should keep same color in multi-calendar message');
+});

@@ -63,6 +63,21 @@ function getTranslation(locale, key) {
 }
 
 /**
+ * Hash calendar name to consistent indicator index
+ * Ensures same calendar always gets same color across all messages
+ * @param {string} calendarName - Calendar name
+ * @returns {number} Index in CALENDAR_INDICATORS array
+ */
+function hashCalendarName(calendarName) {
+  let hash = 0;
+  for (let i = 0; i < calendarName.length; i++) {
+    hash = ((hash << 5) - hash) + calendarName.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash) % CALENDAR_INDICATORS.length;
+}
+
+/**
  * Assign color indicators to calendars
  * @param {Array} events - Events with calendarName property
  * @returns {Map} Map of calendar name to indicator
@@ -70,14 +85,12 @@ function getTranslation(locale, key) {
 function assignCalendarIndicators(events) {
   const uniqueCalendars = [...new Set(events.map(e => e.calendarName).filter(Boolean))];
 
-  // Only use indicators if multiple calendars
-  if (uniqueCalendars.length <= 1) {
-    return new Map();
-  }
-
+  // Always assign indicators using consistent hash-based mapping
+  // This ensures each calendar gets same color across all messages
   const indicatorMap = new Map();
-  uniqueCalendars.forEach((cal, index) => {
-    indicatorMap.set(cal, CALENDAR_INDICATORS[index % CALENDAR_INDICATORS.length]);
+  uniqueCalendars.forEach((cal) => {
+    const index = hashCalendarName(cal);
+    indicatorMap.set(cal, CALENDAR_INDICATORS[index]);
   });
 
   return indicatorMap;
@@ -266,7 +279,9 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
     timeZone: timezone
   }).format(event.start);
 
-  const calendar = calendarName ? ` · ${calendarName}` : '';
+  // Use color indicator instead of text calendar name
+  const indicator = calendarName ? CALENDAR_INDICATORS[hashCalendarName(calendarName)] : '';
+  const calendar = indicator ? ` ${indicator}` : '';
 
   switch (type) {
     case 'new':
