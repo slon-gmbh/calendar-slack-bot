@@ -283,32 +283,47 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
   const indicator = calendarName ? CALENDAR_INDICATORS[hashCalendarName(calendarName)] : '';
   const calendar = indicator ? ` ${indicator}` : '';
 
+  let message = '';
+
   switch (type) {
     case 'new':
       const newTime = formatEventTime(event, locale, timezone);
-      return `*Neuer Termin:* ${event.title} · ${dateStr} · ${newTime}${calendar}`;
+      message = `*Neuer Termin:* ${event.title} · ${dateStr} · ${newTime}${calendar}`;
+      break;
 
     case 'deleted':
       const delTime = formatEventTime(event, locale, timezone);
-      return `*Termin abgesagt:* ${event.title} · ${dateStr} · ${delTime}${calendar}`;
+      message = `*Termin abgesagt:* ${event.title} · ${dateStr} · ${delTime}${calendar}`;
+      break;
 
     case 'time_changed':
       const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
       const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
-      return `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      break;
 
     case 'title_changed':
       const titleTime = formatEventTime(event, locale, timezone);
-      return `*Termin umbenannt:* ${old.title} → ${event.title} · ${dateStr} · ${titleTime}${calendar}`;
+      message = `*Termin umbenannt:* ${old.title} → ${event.title} · ${dateStr} · ${titleTime}${calendar}`;
+      break;
 
     case 'location_changed':
       const locTime = formatEventTime(event, locale, timezone);
-      return `*Termin geändert:* ${event.title} · ${dateStr} · ${locTime}${calendar}`;
+      message = `*Termin geändert:* ${event.title} · ${dateStr} · ${locTime}${calendar}`;
+      break;
 
     default:
       const defaultTime = formatEventTime(event, locale, timezone);
-      return `*Termin geändert:* ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
+      message = `*Termin geändert:* ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
+      break;
   }
+
+  // Add calendar legend if indicator is present
+  if (indicator && calendarName) {
+    message += `\n\n${indicator} ${calendarName}`;
+  }
+
+  return message;
 }
 
 /**
@@ -435,6 +450,14 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
       output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+    }
+  }
+
+  // Add calendar legend
+  if (calendarIndicators.size > 0) {
+    output += '\n';
+    for (const [calName, indicator] of calendarIndicators) {
+      output += `${indicator} ${calName}  `;
     }
   }
 

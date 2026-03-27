@@ -96,6 +96,12 @@ test('renderChangeNotification should format new events', () => {
   const result = renderChangeNotification(diff, 'en-US');
   assert.match(result, /Neuer Termin:/);
   assert.match(result, /New Meeting/);
+
+  // Should include color indicator and legend
+  const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+  const hasIndicator = indicators.some(ind => result.includes(ind));
+  assert.ok(hasIndicator, 'Should show color indicator');
+  assert.match(result, /Team/, 'Should include calendar name in legend');
 });
 
 test('renderChangeNotification should format cancelled events', () => {
@@ -251,6 +257,9 @@ test('renderBundledNotification should show color indicators for single calendar
             result.includes('🟧') || result.includes('🟪') || result.includes('🟥') || result.includes('⬜'),
             'Should show color indicator');
   assert.ok(!result.includes('· Team'), 'Should not show text calendar name');
+
+  // Should include legend showing which color corresponds to which calendar
+  assert.match(result, /Team/, 'Should include calendar name in legend');
 });
 
 test('renderBundledNotification should assign consistent colors to same calendar', () => {
@@ -302,4 +311,8 @@ test('renderBundledNotification should assign consistent colors to same calendar
 
   assert.ok(resultBoth.includes(teamColor), 'Team should keep same color in multi-calendar message');
   assert.ok(resultBoth.includes(vorstandColor), 'Vorstand should keep same color in multi-calendar message');
+
+  // Legend should show both calendars
+  assert.match(resultBoth, /Team/, 'Legend should include Team calendar');
+  assert.match(resultBoth, /Vorstand/, 'Legend should include Vorstand calendar');
 });
