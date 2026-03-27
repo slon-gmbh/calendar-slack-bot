@@ -6,6 +6,7 @@ GitHub Actions-based Slack bot that bridges Nextcloud CalDAV calendars with Slac
 
 - **Automated Digests**: Weekly and daily calendar digests posted to Slack channels
 - **Real-time Updates**: Webhook-triggered change notifications
+- **Change Detection**: Scheduled polling (6-hourly) detects calendar changes and posts bundled notifications
 - **Many-to-Many Mapping**: Any calendar can post to multiple channels
 - **Locale Support**: Multilingual date/time formatting
 - **Zero Infrastructure**: Runs entirely in GitHub Actions
