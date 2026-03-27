@@ -64,6 +64,11 @@ function convertToUTC(date, defaultTimezone) {
 
   const d = date instanceof Date ? date : new Date(date);
 
+  // Validate that we have a valid date
+  if (isNaN(d.getTime())) {
+    throw new Error(`Invalid date value: ${JSON.stringify(date)} (type: ${typeof date})`);
+  }
+
   // If node-ical attached a timezone, it already converted correctly to UTC
   if (d.tz) {
     return d;
@@ -108,15 +113,34 @@ function convertToUTC(date, defaultTimezone) {
 function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   const start = instanceStart || icalEvent.start;
   const end = icalEvent.end || start;
+  const isAllDay = icalEvent.datetype === 'date';
+
+  // Convert dates (all-day events skip timezone conversion)
+  let normalizedStart, normalizedEnd;
+  if (isAllDay) {
+    normalizedStart = start instanceof Date ? start : new Date(start);
+    normalizedEnd = end instanceof Date ? end : new Date(end);
+  } else {
+    normalizedStart = convertToUTC(start, timezone);
+    normalizedEnd = convertToUTC(end, timezone);
+  }
+
+  // Validate dates
+  if (isNaN(normalizedStart.getTime())) {
+    throw new Error(`Invalid start date for event "${icalEvent.summary}": ${JSON.stringify(start)}`);
+  }
+  if (isNaN(normalizedEnd.getTime())) {
+    throw new Error(`Invalid end date for event "${icalEvent.summary}": ${JSON.stringify(end)}`);
+  }
 
   const normalized = {
     id: icalEvent.uid,
     title: icalEvent.summary || '(No title)',
-    start: convertToUTC(start, timezone),
-    end: convertToUTC(end, timezone),
+    start: normalizedStart,
+    end: normalizedEnd,
     location: icalEvent.location || null,
     description: icalEvent.description || null,
-    isAllDay: icalEvent.datetype === 'date'
+    isAllDay: isAllDay
   };
 
   // Debug logging
