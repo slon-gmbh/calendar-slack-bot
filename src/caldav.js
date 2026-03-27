@@ -112,7 +112,22 @@ function convertToUTC(date, defaultTimezone) {
 
 function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   const start = instanceStart || icalEvent.start;
-  const end = icalEvent.end || start;
+
+  // Calculate end time for recurring instances
+  let end;
+  if (instanceStart && icalEvent.end && icalEvent.start) {
+    // Calculate duration from original event
+    const originalStart = icalEvent.start instanceof Date ? icalEvent.start : new Date(icalEvent.start);
+    const originalEnd = icalEvent.end instanceof Date ? icalEvent.end : new Date(icalEvent.end);
+    const durationMs = originalEnd.getTime() - originalStart.getTime();
+
+    // Apply duration to this instance
+    const instanceDate = instanceStart instanceof Date ? instanceStart : new Date(instanceStart);
+    end = new Date(instanceDate.getTime() + durationMs);
+  } else {
+    end = icalEvent.end || start;
+  }
+
   const isAllDay = icalEvent.datetype === 'date';
 
   // Convert dates (all-day events skip timezone conversion)

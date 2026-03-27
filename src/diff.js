@@ -59,6 +59,14 @@ function detectChanges(oldEvent, newEvent) {
   const newEnd = newEvent.end ? new Date(newEvent.end).getTime() : null;
 
   if (oldStart !== newStart || oldEnd !== newEnd) {
+    // Debug logging for time changes
+    if (oldStart !== newStart) {
+      console.log(`[DIFF] Start time changed for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
+    }
+    if (oldEnd !== newEnd) {
+      console.log(`[DIFF] End time changed for "${newEvent.title}": ${oldEvent.end?.toISOString?.()} → ${newEvent.end?.toISOString?.()}`);
+    }
+
     return {
       type: 'time_changed',
       event: newEvent,
