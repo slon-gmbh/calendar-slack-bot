@@ -140,6 +140,31 @@ function formatDate(date, locale = 'en-US', timezone = 'UTC') {
 }
 
 /**
+ * Format short date for display (for change notifications)
+ */
+function formatShortDate(date, locale = 'en-US', timezone = 'UTC') {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: timezone
+  }).format(date);
+}
+
+/**
+ * Check if two dates are on the same day in a given timezone
+ */
+function isSameDay(date1, date2, timezone = 'UTC') {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: timezone
+  });
+  return formatter.format(date1) === formatter.format(date2);
+}
+
+/**
  * Format date range for header
  */
 function formatDateRange(startDate, endDate, locale = 'en-US', timezone = 'UTC') {
@@ -299,7 +324,23 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
     case 'time_changed':
       const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
       const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
-      message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      const dateChanged = !isSameDay(old.start, newData.start, timezone);
+      const timeChanged = oldTime !== newTime2;
+
+      if (dateChanged && !timeChanged) {
+        // Date changed, time stayed same: show oldDate time → newDate time
+        const oldDateStr = formatShortDate(old.start, locale, timezone);
+        const newDateStr = formatShortDate(newData.start, locale, timezone);
+        message = `*Termin verschoben:* ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime2}${calendar}`;
+      } else if (!dateChanged && timeChanged) {
+        // Time changed, date stayed same: show date · oldTime → newTime
+        message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      } else {
+        // Both changed: show oldDate oldTime → newDate newTime
+        const oldDateStr = formatShortDate(old.start, locale, timezone);
+        const newDateStr = formatShortDate(newData.start, locale, timezone);
+        message = `*Termin verschoben:* ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime2}${calendar}`;
+      }
       break;
 
     case 'title_changed':
@@ -409,7 +450,24 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
       const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
-      output += `• ${event.title} · ${dateStr} · ${oldTime} → ${newTime}${calendar}\n`;
+
+      const dateChanged = !isSameDay(old.start, newData.start, timezone);
+      const timeChanged = oldTime !== newTime;
+
+      if (dateChanged && !timeChanged) {
+        // Date changed, time stayed same: show oldDate time → newDate time
+        const oldDateStr = formatShortDate(old.start, locale, timezone);
+        const newDateStr = formatShortDate(newData.start, locale, timezone);
+        output += `• ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime}${calendar}\n`;
+      } else if (!dateChanged && timeChanged) {
+        // Time changed, date stayed same: show date · oldTime → newTime
+        output += `• ${event.title} · ${dateStr} · ${oldTime} → ${newTime}${calendar}\n`;
+      } else {
+        // Both changed: show oldDate oldTime → newDate newTime
+        const oldDateStr = formatShortDate(old.start, locale, timezone);
+        const newDateStr = formatShortDate(newData.start, locale, timezone);
+        output += `• ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime}${calendar}\n`;
+      }
     }
     output += '\n';
   }

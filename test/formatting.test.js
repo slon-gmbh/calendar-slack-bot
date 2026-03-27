@@ -316,3 +316,85 @@ test('renderBundledNotification should assign consistent colors to same calendar
   assert.match(resultBoth, /Team/, 'Legend should include Team calendar');
   assert.match(resultBoth, /Vorstand/, 'Legend should include Vorstand calendar');
 });
+
+test('renderChangeNotification should show both old and new dates when date changes (same time)', () => {
+  // Issue #12: When event moves from March 26 to March 27 but keeps same time (18:00)
+  // Should show: Do., 26. März 18:00 → Fr., 27. März 18:00
+  // NOT: Fr., 27. März · 18:00 → 18:00
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Test',
+      start: new Date('2026-03-27T18:00:00Z'),
+      isAllDay: false
+    },
+    old: { start: new Date('2026-03-26T18:00:00Z') },
+    new: { start: new Date('2026-03-27T18:00:00Z') },
+    calendarName: 'Vorstand'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'Europe/Berlin');
+
+  // Should show old date in the old time part
+  assert.match(result, /26\.\s*März/, 'Should show old date (March 26)');
+  // Should show new date in the new time part
+  assert.match(result, /27\.\s*März/, 'Should show new date (March 27)');
+  // Should show the time (18:00 UTC = 19:00 in Berlin timezone)
+  assert.match(result, /19:00/, 'Should show the time');
+  // Should NOT show the same date twice with arrow between times only
+  assert.ok(!result.match(/27\.\s*März.*·.*19:00.*→.*19:00/), 'Should not show new date with · and arrow to same time');
+});
+
+test('renderChangeNotification should show date once when only time changes (same date)', () => {
+  // Issue #12: When event stays on same date but time changes
+  // Should show: Fr., 27. März · 18:00 → 19:00 (times in Berlin timezone)
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Test',
+      start: new Date('2026-03-27T18:00:00Z'),
+      isAllDay: false
+    },
+    old: { start: new Date('2026-03-27T17:00:00Z') },
+    new: { start: new Date('2026-03-27T18:00:00Z') },
+    calendarName: 'Vorstand'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'Europe/Berlin');
+
+  // Should show the date once
+  const dateMatches = result.match(/27\.\s*März/g) || [];
+  assert.equal(dateMatches.length, 1, 'Should show date only once');
+  // Should show old time → new time (17:00 UTC = 18:00 Berlin, 18:00 UTC = 19:00 Berlin)
+  assert.match(result, /18:00.*→.*19:00/, 'Should show old time → new time');
+});
+
+test('renderChangeNotification should show both dates and times when both change', () => {
+  // Issue #12: When both date and time change
+  // Should show: Do., 26. März 18:00 → Fr., 27. März 19:00 (times in Berlin timezone)
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Test',
+      start: new Date('2026-03-27T18:00:00Z'),
+      isAllDay: false
+    },
+    old: { start: new Date('2026-03-26T17:00:00Z') },
+    new: { start: new Date('2026-03-27T18:00:00Z') },
+    calendarName: 'Vorstand'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'Europe/Berlin');
+
+  // Should show old date and time (17:00 UTC = 18:00 Berlin)
+  assert.match(result, /26\.\s*März/, 'Should show old date (March 26)');
+  assert.match(result, /18:00/, 'Should show old time (18:00 Berlin)');
+  // Should show new date and time (18:00 UTC = 19:00 Berlin)
+  assert.match(result, /27\.\s*März/, 'Should show new date (March 27)');
+  assert.match(result, /19:00/, 'Should show new time (19:00 Berlin)');
+  // Should have arrow between them
+  assert.match(result, /→/, 'Should have arrow');
+});
