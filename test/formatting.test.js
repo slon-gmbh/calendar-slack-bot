@@ -76,7 +76,7 @@ test('renderChangeNotification should format time changes with arrow', () => {
   };
 
   const result = renderChangeNotification(diff, 'en-US');
-  assert.match(result, /✏️.*Moved:/);
+  assert.match(result, /Termin verschoben:/);
   assert.match(result, /Team Standup/);
   assert.match(result, /→/); // Arrow indicating change
 });
@@ -94,7 +94,7 @@ test('renderChangeNotification should format new events', () => {
   };
 
   const result = renderChangeNotification(diff, 'en-US');
-  assert.match(result, /➕.*New:/);
+  assert.match(result, /Neuer Termin:/);
   assert.match(result, /New Meeting/);
 });
 
@@ -111,7 +111,7 @@ test('renderChangeNotification should format cancelled events', () => {
   };
 
   const result = renderChangeNotification(diff, 'en-US');
-  assert.match(result, /🗑️.*Cancelled:/);
+  assert.match(result, /Termin abgesagt:/);
   assert.match(result, /Cancelled Meeting/);
 });
 
@@ -153,9 +153,9 @@ test('renderBundledNotification should group multiple changes by type', () => {
 
   const result = renderBundledNotification(diffs, 'en-US');
   assert.match(result, /3 calendar changes/);
-  assert.match(result, /➕.*1 new event/);
-  assert.match(result, /🗑️.*1 cancelled/);
-  assert.match(result, /✏️.*1 modified/);
+  assert.match(result, /Neuer Termin:/);
+  assert.match(result, /Termin abgesagt:/);
+  assert.match(result, /Termin verschoben:/);
   assert.match(result, /New Meeting/);
   assert.match(result, /Cancelled Event/);
   assert.match(result, /Moved Meeting/);

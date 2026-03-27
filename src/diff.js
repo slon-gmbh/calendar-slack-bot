@@ -59,7 +59,19 @@ function detectChanges(oldEvent, newEvent) {
   const newEnd = newEvent.end ? new Date(newEvent.end).getTime() : null;
 
   if (oldStart !== newStart || oldEnd !== newEnd) {
-    // Debug logging for time changes
+    // Check if this is a DST artifact (same local time, different UTC)
+    // If the difference is exactly ±1 hour and it's a recurring event (same ID),
+    // it's likely a DST transition and not a real change
+    const startDiff = Math.abs(newStart - oldStart);
+    const endDiff = Math.abs(newEnd - oldEnd);
+    const oneHour = 3600000; // 1 hour in milliseconds
+
+    if (startDiff === oneHour && endDiff === oneHour && oldEvent.id === newEvent.id) {
+      console.log(`[DIFF] Ignoring DST artifact for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
+      return null; // Not a real change, just DST transition
+    }
+
+    // Debug logging for real time changes
     if (oldStart !== newStart) {
       console.log(`[DIFF] Start time changed for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
     }

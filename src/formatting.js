@@ -271,28 +271,28 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
   switch (type) {
     case 'new':
       const newTime = formatEventTime(event, locale, timezone);
-      return `➕ *${getTranslation(locale, 'new')}:* ${event.title} · ${dateStr} · ${newTime}${calendar}`;
+      return `*Neuer Termin:* ${event.title} · ${dateStr} · ${newTime}${calendar}`;
 
     case 'deleted':
       const delTime = formatEventTime(event, locale, timezone);
-      return `🗑️ *${getTranslation(locale, 'cancelled')}:* ${event.title} · ${dateStr} · ${delTime}${calendar}`;
+      return `*Termin abgesagt:* ${event.title} · ${dateStr} · ${delTime}${calendar}`;
 
     case 'time_changed':
       const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
       const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
-      return `✏️ *${getTranslation(locale, 'moved')}:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      return `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
 
     case 'title_changed':
       const titleTime = formatEventTime(event, locale, timezone);
-      return `✏️ *${getTranslation(locale, 'updated')}:* ${event.title} · ${dateStr} · ${titleTime} (${getTranslation(locale, 'renamed')})${calendar}`;
+      return `*Termin umbenannt:* ${old.title} → ${event.title} · ${dateStr} · ${titleTime}${calendar}`;
 
     case 'location_changed':
       const locTime = formatEventTime(event, locale, timezone);
-      return `✏️ *${getTranslation(locale, 'updated')}:* ${event.title} · ${dateStr} · ${locTime} (${getTranslation(locale, 'locationChanged')})${calendar}`;
+      return `*Termin geändert:* ${event.title} · ${dateStr} · ${locTime}${calendar}`;
 
     default:
       const defaultTime = formatEventTime(event, locale, timezone);
-      return `✏️ *${getTranslation(locale, 'updated')}:* ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
+      return `*Termin geändert:* ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
   }
 }
 
@@ -307,7 +307,7 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
   if (diffs.length === 0) return '';
   if (diffs.length === 1) return renderChangeNotification(diffs[0], locale, timezone);
 
-  let output = `📬 *${diffs.length} ${getTranslation(locale, 'calendarChanges')}*\n\n`;
+  let output = `*${diffs.length} ${getTranslation(locale, 'calendarChanges')}*\n\n`;
 
   // Assign calendar indicators (color flags) for multi-calendar channels
   const calendarIndicators = assignCalendarIndicators(
@@ -318,13 +318,15 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
   const grouped = {
     new: diffs.filter(d => d.type === 'new'),
     deleted: diffs.filter(d => d.type === 'deleted'),
-    modified: diffs.filter(d => d.type !== 'new' && d.type !== 'deleted')
+    timeChanged: diffs.filter(d => d.type === 'time_changed'),
+    titleChanged: diffs.filter(d => d.type === 'title_changed'),
+    locationChanged: diffs.filter(d => d.type === 'location_changed')
   };
 
   // Render new events
   if (grouped.new.length > 0) {
-    const label = grouped.new.length === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
-    output += `➕ *${grouped.new.length} ${getTranslation(locale, 'newEvents')} ${label}:*\n`;
+    const label = grouped.new.length === 1 ? 'Neuer Termin' : 'Neue Termine';
+    output += `*${label}:*\n`;
     for (const diff of grouped.new) {
       const { event, calendarName } = diff;
       const dateStr = new Intl.DateTimeFormat(locale, {
@@ -343,8 +345,8 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
 
   // Render cancelled events
   if (grouped.deleted.length > 0) {
-    const label = grouped.deleted.length === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
-    output += `🗑️ *${grouped.deleted.length} ${getTranslation(locale, 'cancelledEvents')} ${label}:*\n`;
+    const label = grouped.deleted.length === 1 ? 'Termin abgesagt' : 'Termine abgesagt';
+    output += `*${label}:*\n`;
     for (const diff of grouped.deleted) {
       const { event, calendarName } = diff;
       const dateStr = new Intl.DateTimeFormat(locale, {
@@ -361,32 +363,63 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
     output += '\n';
   }
 
-  // Render modified events
-  if (grouped.modified.length > 0) {
-    const label = grouped.modified.length === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
-    output += `✏️ *${grouped.modified.length} ${getTranslation(locale, 'modifiedEvents')} ${label}:*\n`;
-    for (const diff of grouped.modified) {
-      const { type, event, old, new: newData, calendarName } = diff;
+  // Render time-changed events
+  if (grouped.timeChanged.length > 0) {
+    const label = grouped.timeChanged.length === 1 ? 'Termin verschoben' : 'Termine verschoben';
+    output += `*${label}:*\n`;
+    for (const diff of grouped.timeChanged) {
+      const { event, old, new: newData, calendarName } = diff;
       const dateStr = new Intl.DateTimeFormat(locale, {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         timeZone: timezone
       }).format(event.start);
+      const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
+      const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
+      output += `• ${event.title} · ${dateStr} · ${oldTime} → ${newTime}${calendar}\n`;
+    }
+    output += '\n';
+  }
 
-      if (type === 'time_changed') {
-        const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
-        const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
-        output += `• ${event.title} · ${dateStr} · ${oldTime} → ${newTime}${calendar}\n`;
-      } else if (type === 'title_changed') {
-        output += `• ${event.title} (${getTranslation(locale, 'renamed')}) · ${dateStr}${calendar}\n`;
-      } else if (type === 'location_changed') {
-        output += `• ${event.title} (${getTranslation(locale, 'locationChanged')}) · ${dateStr}${calendar}\n`;
-      } else {
-        output += `• ${event.title} · ${dateStr}${calendar}\n`;
-      }
+  // Render renamed events
+  if (grouped.titleChanged.length > 0) {
+    const label = grouped.titleChanged.length === 1 ? 'Termin umbenannt' : 'Termine umbenannt';
+    output += `*${label}:*\n`;
+    for (const diff of grouped.titleChanged) {
+      const { event, old, calendarName } = diff;
+      const dateStr = new Intl.DateTimeFormat(locale, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: timezone
+      }).format(event.start);
+      const time = formatEventTime(event, locale, timezone);
+      const indicator = calendarIndicators.get(calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
+      output += `• ${old.title} → ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+    }
+    output += '\n';
+  }
+
+  // Render location-changed events
+  if (grouped.locationChanged.length > 0) {
+    const label = grouped.locationChanged.length === 1 ? 'Termin geändert' : 'Termine geändert';
+    output += `*${label}:*\n`;
+    for (const diff of grouped.locationChanged) {
+      const { event, calendarName } = diff;
+      const dateStr = new Intl.DateTimeFormat(locale, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: timezone
+      }).format(event.start);
+      const time = formatEventTime(event, locale, timezone);
+      const indicator = calendarIndicators.get(calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
+      output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
     }
   }
 
