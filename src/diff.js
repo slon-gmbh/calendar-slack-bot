@@ -52,39 +52,44 @@ function diffEvents(previous, current) {
  * Detect specific changes between two events
  */
 function detectChanges(oldEvent, newEvent) {
-  // Time change (start or end)
-  const oldStart = oldEvent.start ? new Date(oldEvent.start).getTime() : null;
-  const newStart = newEvent.start ? new Date(newEvent.start).getTime() : null;
-  const oldEnd = oldEvent.end ? new Date(oldEvent.end).getTime() : null;
-  const newEnd = newEvent.end ? new Date(newEvent.end).getTime() : null;
-
-  if (oldStart !== newStart || oldEnd !== newEnd) {
-    // Check if this is a DST artifact (same local time, different UTC)
-    // If the difference is exactly ±1 hour and it's a recurring event (same ID),
-    // it's likely a DST transition and not a real change
-    const startDiff = Math.abs(newStart - oldStart);
-    const endDiff = Math.abs(newEnd - oldEnd);
-    const oneHour = 3600000; // 1 hour in milliseconds
-
-    if (startDiff === oneHour && endDiff === oneHour && oldEvent.id === newEvent.id) {
-      console.log(`[DIFF] Ignoring DST artifact for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
-      return null; // Not a real change, just DST transition
+  // For recurring events, compare rrule instead of individual instance timestamps
+  // This prevents false positives from DST transitions affecting regenerated instances
+  if (oldEvent.rrule || newEvent.rrule) {
+    // If rrule changed or appeared/disappeared, that's a schedule change
+    if (oldEvent.rrule !== newEvent.rrule) {
+      console.log(`[DIFF] Recurrence pattern changed for "${newEvent.title}"`);
+      return {
+        type: 'time_changed',
+        event: newEvent,
+        old: { start: oldEvent.start, end: oldEvent.end },
+        new: { start: newEvent.start, end: newEvent.end }
+      };
     }
+    // Same rrule = same recurring pattern, skip time comparison for instances
+    // (instances will have different UTC timestamps across DST but represent same local times)
+  } else {
+    // Non-recurring event: compare actual timestamps
+    const oldStart = oldEvent.start ? new Date(oldEvent.start).getTime() : null;
+    const newStart = newEvent.start ? new Date(newEvent.start).getTime() : null;
+    const oldEnd = oldEvent.end ? new Date(oldEvent.end).getTime() : null;
+    const newEnd = newEvent.end ? new Date(newEvent.end).getTime() : null;
 
-    // Debug logging for real time changes
-    if (oldStart !== newStart) {
-      console.log(`[DIFF] Start time changed for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
-    }
-    if (oldEnd !== newEnd) {
-      console.log(`[DIFF] End time changed for "${newEvent.title}": ${oldEvent.end?.toISOString?.()} → ${newEvent.end?.toISOString?.()}`);
-    }
+    if (oldStart !== newStart || oldEnd !== newEnd) {
+      // Debug logging for real time changes
+      if (oldStart !== newStart) {
+        console.log(`[DIFF] Start time changed for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
+      }
+      if (oldEnd !== newEnd) {
+        console.log(`[DIFF] End time changed for "${newEvent.title}": ${oldEvent.end?.toISOString?.()} → ${newEvent.end?.toISOString?.()}`);
+      }
 
-    return {
-      type: 'time_changed',
-      event: newEvent,
-      old: { start: oldEvent.start, end: oldEvent.end },
-      new: { start: newEvent.start, end: newEvent.end }
-    };
+      return {
+        type: 'time_changed',
+        event: newEvent,
+        old: { start: oldEvent.start, end: oldEvent.end },
+        new: { start: newEvent.start, end: newEvent.end }
+      };
+    }
   }
 
   // Title change

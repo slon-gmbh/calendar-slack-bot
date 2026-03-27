@@ -158,6 +158,11 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
     isAllDay: isAllDay
   };
 
+  // Store rrule string for recurring events
+  if (icalEvent.rrule) {
+    normalized.rrule = icalEvent.rrule.toString();
+  }
+
   // Debug logging
   console.log(`[DEBUG] Event: ${normalized.title}`);
   console.log(`  Raw start:`, start);
@@ -165,6 +170,9 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   console.log(`  Normalized start:`, normalized.start);
   console.log(`  ISO string:`, normalized.start.toISOString());
   console.log(`  isAllDay:`, normalized.isAllDay);
+  if (normalized.rrule) {
+    console.log(`  rrule:`, normalized.rrule);
+  }
 
   return normalized;
 }
