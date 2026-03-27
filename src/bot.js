@@ -126,6 +126,21 @@ function getCurrentWeekRange() {
   return { start: startOfWeek, end: endOfWeek };
 }
 
+function getChangeDetectionRange(now = new Date()) {
+  // Current week range (Monday - Sunday)
+  const dayOfWeek = now.getUTCDay();
+  const startOfWeek = new Date(now);
+  startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  startOfWeek.setUTCHours(0, 0, 0, 0);
+
+  // End of week + 4 additional weeks (5 weeks total)
+  const endOfLookahead = new Date(startOfWeek);
+  endOfLookahead.setUTCDate(startOfWeek.getUTCDate() + (7 * 5) - 1); // 5 weeks minus 1 day
+  endOfLookahead.setUTCHours(23, 59, 59, 999);
+
+  return { start: startOfWeek, end: endOfLookahead };
+}
+
 function getDailyRange() {
   const now = new Date();
 
@@ -304,5 +319,9 @@ async function runDailyDigest(config, dryRun, forceAll) {
     await postDigestForChannel(config, channel, 'daily', dryRun);
   }
 }
+
+module.exports = {
+  getChangeDetectionRange
+};
 
 main();
