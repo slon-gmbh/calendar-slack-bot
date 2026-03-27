@@ -51,16 +51,37 @@ test('classifyUrgency should return URGENT for events within 24h', () => {
 });
 
 test('classifyUrgency should return THIS_WEEK for events within current week', () => {
-  const now = new Date();
-  const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  // Use fixed dates to ensure event is within the same week
+  // Week: Monday Mar 23 - Sunday Mar 29, 2026
+  const wednesday = new Date('2026-03-25T10:00:00Z'); // Wednesday
+  const friday = new Date('2026-03-27T14:00:00Z'); // Friday (2 days later, same week)
 
-  const event = { start: in3Days };
+  const event = { start: friday };
   const channelConfig = {
     daily_digest_schedule: 'weekdays 08:00',
     digest_schedule: 'sunday 18:00'
   };
 
-  assert.strictEqual(classifyUrgency(event, channelConfig), 'THIS_WEEK');
+  // Mock the current time by temporarily replacing Date
+  const OriginalDate = global.Date;
+  global.Date = class extends OriginalDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        return wednesday;
+      }
+      return new OriginalDate(...args);
+    }
+    static now() {
+      return wednesday.getTime();
+    }
+  };
+
+  const result = classifyUrgency(event, channelConfig);
+
+  // Restore original Date
+  global.Date = OriginalDate;
+
+  assert.strictEqual(result, 'THIS_WEEK');
 });
 
 test('shouldNotifyNow should respect notifications setting', () => {

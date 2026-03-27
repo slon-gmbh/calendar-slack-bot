@@ -386,6 +386,57 @@ Now run the bot for real to post actual messages to Slack.
 
 **Success!** Your calendar-slack-bot is now running. The scheduled workflow will run hourly and post digests according to your configured schedules.
 
+## Change Detection (Automatic)
+
+The change detection workflow runs automatically every 6 hours to detect calendar changes and post notifications.
+
+### How It Works
+
+**Scheduled polling:**
+- GitHub Actions runs `.github/workflows/change-detection.yml` every 6 hours
+- Fetches all calendars for 5-week window (current week + 4 weeks ahead)
+- Diffs against cached state stored in `cache-state` orphan git branch
+- Posts bundled change notifications to Slack channels
+
+**First run (baseline):**
+- On first run or missing cache, establishes baseline without posting notifications
+- Subsequent runs detect changes and post notifications
+
+**Respects channel settings:**
+- Honors `notifications` setting per channel (`"all"`, `"urgent_only"`, `"disabled"`, etc.)
+- See `config.example.json` for notification options
+
+### Adjusting Polling Frequency
+
+**Default:** 6-hourly (`0 */6 * * *`) = ~120 min/month (6% of free tier)
+
+**To change frequency:**
+
+1. Edit `.github/workflows/change-detection.yml`
+2. Modify the cron schedule:
+   ```yaml
+   schedule:
+     - cron: '0 * * * *'  # Hourly (720 min/month)
+   ```
+
+**Common schedules:**
+- Hourly: `0 * * * *` (~720 min/month, 36% of free tier)
+- 6-hourly: `0 */6 * * *` (~120 min/month, 6% of free tier)
+- 12-hourly: `0 */12 * * *` (~60 min/month, 3% of free tier)
+
+### Manual Testing
+
+Test change detection manually:
+
+1. Go to: Repository → Actions → **"Change Detection"**
+2. Click **"Run workflow"**
+3. Configure:
+   - **Branch:** `main`
+   - **Dry run:** ✅ Check for testing (no Slack posts, no cache commits)
+4. Click **"Run workflow"**
+
+Check the logs to see detected changes.
+
 ## Next Steps
 
 ### Automated Scheduling
@@ -420,6 +471,56 @@ See the [GitHub Issues](https://github.com/slon-gmbh/calendar-slack-bot/issues) 
 - Clickable Canvas links
 - Summary vs full content in messages
 - Interactive setup wizard
+
+## Troubleshooting
+
+### Cache Branch Cleanup
+
+If you remove or rename a calendar in `config.json`, the old cache file remains in the `cache-state` branch. These files are harmless (never read) but accumulate over time.
+
+**To clean up manually:**
+
+```bash
+# Checkout cache branch
+git fetch origin cache-state
+git checkout cache-state
+
+# List cache files
+ls *.json
+
+# Remove old calendar cache
+git rm old-calendar-id.json
+
+# Commit and push
+git commit -m "chore: remove cache for old-calendar-id"
+git push origin cache-state
+
+# Return to main
+git checkout main
+```
+
+### Change Detection Not Posting Notifications
+
+**Check channel notification settings:**
+
+If changes are detected but not posted, verify the channel's `notifications` setting in `config.json`:
+
+- `"all"` - Posts all changes (default)
+- `"urgent_only"` - Only events within 24 hours
+- `"disabled"` - No change notifications
+
+Check workflow logs for: `"Change detected but channel has notifications filtered - skipping"`
+
+### First Run Shows No Changes
+
+This is expected. The first run establishes a baseline without posting notifications to avoid spamming "new event" notifications for the entire calendar.
+
+**To verify baseline was established:**
+
+1. Go to: Repository → Actions → **"Change Detection"**
+2. Check recent run logs
+3. Look for: `"No previous state for <calendar-id> - establishing baseline"`
+4. Verify cache-state branch exists: `git fetch origin cache-state && git checkout cache-state && ls *.json`
 
 ---
 
