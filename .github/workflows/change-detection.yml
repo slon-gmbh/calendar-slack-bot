@@ -14,6 +14,8 @@ on:
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow creating and pushing to cache-state branch
     steps:
       - uses: actions/checkout@v4
         with:
