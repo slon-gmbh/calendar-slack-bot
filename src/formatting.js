@@ -309,6 +309,11 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
 
   let output = `📬 *${diffs.length} ${getTranslation(locale, 'calendarChanges')}*\n\n`;
 
+  // Assign calendar indicators (color flags) for multi-calendar channels
+  const calendarIndicators = assignCalendarIndicators(
+    diffs.map(d => ({ ...d.event, calendarName: d.calendarName }))
+  );
+
   // Group by change type
   const grouped = {
     new: diffs.filter(d => d.type === 'new'),
@@ -329,7 +334,8 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
         timeZone: timezone
       }).format(event.start);
       const time = formatEventTime(event, locale, timezone);
-      const calendar = calendarName ? ` · ${calendarName}` : '';
+      const indicator = calendarIndicators.get(calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
       output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
     }
     output += '\n';
@@ -348,7 +354,8 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
         timeZone: timezone
       }).format(event.start);
       const time = formatEventTime(event, locale, timezone);
-      const calendar = calendarName ? ` · ${calendarName}` : '';
+      const indicator = calendarIndicators.get(calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
       output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
     }
     output += '\n';
@@ -366,7 +373,8 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
         day: 'numeric',
         timeZone: timezone
       }).format(event.start);
-      const calendar = calendarName ? ` · ${calendarName}` : '';
+      const indicator = calendarIndicators.get(calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
 
       if (type === 'time_changed') {
         const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
