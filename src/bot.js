@@ -35,10 +35,9 @@ const dryRun = args.includes('--dry-run');
  * @param {string} calendarId - Calendar identifier
  * @param {string} errorMessage - Current error message
  * @param {Object} cachedData - Cached calendar data with error state
- * @param {string} cacheDir - Cache directory
- * @returns {Promise<boolean>} True if should post notification
+ * @returns {boolean} True if should post notification
  */
-async function shouldPostErrorNotification(calendarId, errorMessage, cachedData, cacheDir) {
+function shouldPostErrorNotification(calendarId, errorMessage, cachedData) {
   if (!cachedData) {
     return true; // First run, always notify on error
   }
@@ -77,6 +76,7 @@ async function shouldPostErrorNotification(calendarId, errorMessage, cachedData,
  * @param {string} calendarId - Calendar identifier
  * @param {Array} diffsWithCalendar - Diffs with calendar name attached
  * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
  */
 async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, dryRun) {
   for (const channel of config.channels) {
@@ -108,6 +108,9 @@ async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, 
 /**
  * Run change detection polling
  * Fetch all calendars, diff against cache, post bundled notifications
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
  */
 async function runChangeDetection(config, dryRun) {
   console.log('Running change detection...');
@@ -172,7 +175,7 @@ async function runChangeDetection(config, dryRun) {
       console.error(`Failed to fetch calendar '${calendar.name}' (${calId}): ${error.message}`);
 
       // Check if we should post error notification (suppression logic)
-      const shouldNotify = await shouldPostErrorNotification(calId, error.message, cachedData, cacheDir);
+      const shouldNotify = shouldPostErrorNotification(calId, error.message, cachedData);
 
       if (shouldNotify) {
         await postErrorNotification(
@@ -197,6 +200,10 @@ async function runChangeDetection(config, dryRun) {
   console.log('Change detection complete');
 }
 
+/**
+ * Main entry point for bot execution
+ * @returns {Promise<void>}
+ */
 async function main() {
   try {
     const config = await loadConfig();
@@ -227,6 +234,12 @@ async function main() {
   }
 }
 
+/**
+ * Run scheduled digest checks for all channels
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
+ */
 async function runScheduledDigests(config, dryRun) {
   const now = new Date();
 
@@ -245,6 +258,14 @@ async function runScheduledDigests(config, dryRun) {
   }
 }
 
+/**
+ * Post digest for a specific channel
+ * @param {Object} config - Bot configuration
+ * @param {Object} channel - Channel configuration
+ * @param {string} type - Digest type ('daily' or 'weekly')
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
+ */
 async function postDigestForChannel(config, channel, type, dryRun) {
   // Fetch events from all calendars for this channel
   const allEvents = [];
@@ -281,6 +302,10 @@ async function postDigestForChannel(config, channel, type, dryRun) {
   await updateCanvas(channel.canvas_id, canvasContent, dryRun);
 }
 
+/**
+ * Get current week date range (Monday - Sunday)
+ * @returns {Object} Object with start and end Date objects
+ */
 function getCurrentWeekRange() {
   const now = new Date();
   const dayOfWeek = now.getUTCDay();
@@ -295,6 +320,11 @@ function getCurrentWeekRange() {
   return { start: startOfWeek, end: endOfWeek };
 }
 
+/**
+ * Get change detection date range (current week + 4 weeks lookahead)
+ * @param {Date} now - Reference date (defaults to current time)
+ * @returns {Object} Object with start and end Date objects
+ */
 function getChangeDetectionRange(now = new Date()) {
   // Current week range (Monday - Sunday)
   const dayOfWeek = now.getUTCDay();
@@ -310,6 +340,10 @@ function getChangeDetectionRange(now = new Date()) {
   return { start: startOfWeek, end: endOfLookahead };
 }
 
+/**
+ * Get daily digest date range (today and tomorrow)
+ * @returns {Object} Object with start and end Date objects
+ */
 function getDailyRange() {
   const now = new Date();
 
@@ -325,6 +359,12 @@ function getDailyRange() {
   return { start: startOfToday, end: endOfTomorrow };
 }
 
+/**
+ * Handle webhook event change notifications
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
+ */
 async function runEventChanged(config, dryRun) {
   // Parse webhook payload
   const payload = process.env.WEBHOOK_PAYLOAD ? JSON.parse(process.env.WEBHOOK_PAYLOAD) : {};
@@ -398,6 +438,11 @@ async function runEventChanged(config, dryRun) {
 /**
  * Route detected diffs to subscribed channels with debouncing
  * Shared by runEventChanged and runFullRefresh
+ * @param {Object} config - Bot configuration
+ * @param {string} calendarId - Calendar identifier
+ * @param {Array} diffsWithCalendar - Diffs with calendar name attached
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
  */
 async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRun) {
   for (const channel of config.channels) {
@@ -448,6 +493,12 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
   }
 }
 
+/**
+ * Run full refresh for all calendars
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
+ */
 async function runFullRefresh(config, dryRun) {
   console.log('Running full refresh for all calendars');
 
@@ -475,6 +526,13 @@ async function runFullRefresh(config, dryRun) {
   }
 }
 
+/**
+ * Run weekly digest for all channels
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @param {boolean} forceAll - Force digest for all channels
+ * @returns {Promise<void>}
+ */
 async function runWeeklyDigest(config, dryRun, forceAll) {
   console.log('Running weekly digest...');
   for (const channel of config.channels) {
@@ -482,6 +540,13 @@ async function runWeeklyDigest(config, dryRun, forceAll) {
   }
 }
 
+/**
+ * Run daily digest for all channels
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @param {boolean} forceAll - Force digest for all channels
+ * @returns {Promise<void>}
+ */
 async function runDailyDigest(config, dryRun, forceAll) {
   console.log('Running daily digest...');
   for (const channel of config.channels) {
@@ -493,4 +558,6 @@ module.exports = {
   getChangeDetectionRange
 };
 
-main();
+if (require.main === module) {
+  main();
+}
