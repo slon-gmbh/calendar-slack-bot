@@ -24,6 +24,34 @@ async function loadCacheState(calendarId, cacheDir) {
   try {
     const content = await readFile(filePath, 'utf-8');
     const data = JSON.parse(content);
+
+    // Convert date strings back to Date objects
+    if (data && data.events) {
+      data.events = data.events.map(event => {
+        const start = new Date(event.start);
+
+        // Validate start date
+        if (isNaN(start.getTime())) {
+          throw new Error(`Invalid cached start date for event "${event.title}": ${event.start}`);
+        }
+
+        // Convert and validate end date if present
+        let end = event.end;
+        if (end) {
+          end = new Date(end);
+          if (isNaN(end.getTime())) {
+            throw new Error(`Invalid cached end date for event "${event.title}": ${event.end}`);
+          }
+        }
+
+        return {
+          ...event,
+          start,
+          ...(end && { end })
+        };
+      });
+    }
+
     return data;
   } catch (error) {
     if (error.code === 'ENOENT') {

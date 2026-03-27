@@ -24,7 +24,12 @@ test('loadCacheState should load valid cache file', async () => {
 
   const result = await loadCacheState('team-calendar', TEST_CACHE_DIR);
 
-  assert.deepStrictEqual(result.events, cacheData.events);
+  // Dates should be converted to Date objects
+  assert.strictEqual(result.events.length, 1);
+  assert.strictEqual(result.events[0].id, 'e1');
+  assert.strictEqual(result.events[0].title, 'Test Event');
+  assert.ok(result.events[0].start instanceof Date);
+  assert.strictEqual(result.events[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
   assert.strictEqual(result.updated_at, cacheData.updated_at);
 
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
@@ -77,7 +82,9 @@ test('saveCacheState should write valid JSON with events', async () => {
 
   assert.strictEqual(saved.events[0].id, 'e1');
   assert.strictEqual(saved.events[0].title, 'Meeting');
-  assert.strictEqual(saved.events[0].start, '2026-03-26T10:00:00.000Z');
+  // Dates are converted back to Date objects when loading
+  assert.ok(saved.events[0].start instanceof Date);
+  assert.strictEqual(saved.events[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
   assert.ok(saved.updated_at);
   assert.ok(!saved.last_error);
 
