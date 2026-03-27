@@ -96,6 +96,10 @@ function detectChanges(oldEvent, newEvent) {
  * Load cached events from GitHub Actions cache
  * @param {string} calendarId - Calendar identifier
  * @returns {Promise<Array|null>} Cached events or null if not found
+ *
+ * DEPRECATED: Originally designed for GitHub Actions cache approach.
+ * Superseded by src/cache.js which uses the cache-state git branch.
+ * Retained for reference. Safe to remove in a future cleanup pass.
  */
 async function loadCachedEvents(calendarId) {
   try {
@@ -130,6 +134,10 @@ async function loadCachedEvents(calendarId) {
  * @param {string} calendarId - Calendar identifier
  * @param {Array} events - Events to cache
  * @returns {Promise<void>}
+ *
+ * DEPRECATED: Originally designed for GitHub Actions cache approach.
+ * Superseded by src/cache.js which uses the cache-state git branch.
+ * Retained for reference. Safe to remove in a future cleanup pass.
  */
 async function saveCachedEvents(calendarId, events) {
   try {
