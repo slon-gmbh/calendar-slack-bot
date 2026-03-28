@@ -31,6 +31,22 @@ const mode = args.find(arg => arg.startsWith('--') && !arg.startsWith('--dry'));
 const dryRun = args.includes('--dry-run');
 
 /**
+ * Build cache map for color resolution
+ * @param {Object} config - Bot configuration
+ * @returns {Promise<Map>} Map of calendarId to cached events
+ */
+async function buildCacheMap(config) {
+  const cacheMap = new Map();
+  for (const calendarId of Object.keys(config.calendars)) {
+    const cached = await loadCachedEvents(calendarId);
+    if (cached) {
+      cacheMap.set(calendarId, cached);
+    }
+  }
+  return cacheMap;
+}
+
+/**
  * Check if error notification should be posted (suppression logic)
  * @param {string} calendarId - Calendar identifier
  * @param {string} errorMessage - Current error message
@@ -100,7 +116,8 @@ async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, 
     // Post bundled notification (polling mode - no debounce)
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
-    const notification = renderBundledNotification(notifiableDiffs, locale, timezone);
+    const cacheMap = await buildCacheMap(config);
+    const notification = await renderBundledNotification(notifiableDiffs, locale, timezone, { config, cacheMap });
 
     console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
     await postMessage(channel.id, notification, dryRun);
@@ -325,13 +342,14 @@ async function postDigestForChannel(config, channel, type, dryRun) {
     ? getDailyRange()
     : getCurrentWeekRange();
 
+  const cacheMap = await buildCacheMap(config);
   const digest = type === 'daily'
-    ? renderDailyView(allEvents, dateRange, locale, { ...channel, timezone })
-    : renderWeekView(allEvents, dateRange, locale, { ...channel, timezone });
+    ? await renderDailyView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap })
+    : await renderWeekView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap });
   await postMessage(channel.id, digest, dryRun);
 
   // Update Canvas (always full week)
-  const canvasContent = renderCanvasContent(allEvents, { locale, timezone, ...channel });
+  const canvasContent = await renderCanvasContent(allEvents, { locale, timezone, ...channel, config, cacheMap });
   await updateCanvas(channel.canvas_id, canvasContent, dryRun);
 }
 
@@ -502,7 +520,8 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
       console.log(`Debounce window expired for channel ${channel.id} - posting ${pending.diffs.length} stale diffs`);
       const locale = channel.locale || config.locale;
       const timezone = channel.timezone || config.timezone || 'UTC';
-      const staleNotification = renderBundledNotification(pending.diffs, locale, timezone);
+      const cacheMap = await buildCacheMap(config);
+      const staleNotification = await renderBundledNotification(pending.diffs, locale, timezone, { config, cacheMap });
       await postMessage(channel.id, staleNotification, dryRun);
     }
 
@@ -520,7 +539,8 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
     // Post bundled notification
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
-    const notification = renderBundledNotification(allDiffs, locale, timezone);
+    const cacheMap = await buildCacheMap(config);
+    const notification = await renderBundledNotification(allDiffs, locale, timezone, { config, cacheMap });
     await postMessage(channel.id, notification, dryRun);
 
     // Clear debounce cache
