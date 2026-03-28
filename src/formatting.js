@@ -121,14 +121,6 @@ function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
   });
 
   const formatted = timeFormat.format(event.start);
-
-  // Debug logging
-  console.log(`[DEBUG] Formatting: ${event.title}`);
-  console.log(`  Date object:`, event.start);
-  console.log(`  ISO:`, event.start.toISOString());
-  console.log(`  Timezone:`, timezone);
-  console.log(`  Formatted:`, formatted);
-
   return formatted;
 }
 
@@ -297,9 +289,10 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
  * @param {Object} diff - Diff object from diffEvents
  * @param {string} locale - Locale for formatting
  * @param {string} timezone - IANA timezone
+ * @param {Map} calendarIndicators - Map of calendar name to emoji indicator (from assignCalendarIndicators)
  * @returns {string} Formatted notification
  */
-function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
+function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC', calendarIndicators = new Map()) {
   const { type, event, old, new: newData, calendarName } = diff;
 
   const dateStr = new Intl.DateTimeFormat(locale, {
@@ -309,8 +302,10 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
     timeZone: timezone
   }).format(event.start);
 
-  // Use color indicator instead of text calendar name
-  const indicator = calendarName ? CALENDAR_INDICATORS[hashCalendarName(calendarName)] : '';
+  // Use color indicator from resolved map, fallback to hash if not in map
+  const indicator = calendarName && calendarIndicators.has(calendarName)
+    ? calendarIndicators.get(calendarName)
+    : (calendarName ? CALENDAR_INDICATORS[hashCalendarName(calendarName)] : '');
   const calendar = indicator ? ` ${indicator}` : '';
 
   let message = '';
@@ -398,18 +393,25 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
  * @param {string} locale - Locale for formatting
  * @param {string} timezone - IANA timezone
  * @param {Object} options - Options including config and cacheMap
- * @returns {Promise<string>} Formatted bundled notification
+ * @returns {Promise<Object>} {message: string, newColors: Map} - newColors are colors to cache
  */
 async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC', options = {}) {
-  if (diffs.length === 0) return '';
-  if (diffs.length === 1) return renderChangeNotification(diffs[0], locale, timezone);
+  if (diffs.length === 0) return { message: '', newColors: new Map() };
+  if (diffs.length === 1) {
+    const { indicatorMap, newColors } = await assignCalendarIndicators(
+      [{ ...diffs[0].event, calendarName: diffs[0].calendarName }],
+      options.config || {},
+      options.cacheMap || new Map()
+    );
+    return { message: renderChangeNotification(diffs[0], locale, timezone, indicatorMap), newColors };
+  }
 
   const { config = {}, cacheMap = new Map() } = options;
 
   let output = `*${diffs.length} ${getTranslation(locale, 'calendarChanges')}*\n\n`;
 
   // Assign calendar indicators (color flags) for multi-calendar channels
-  const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(
+  const { indicatorMap: calendarIndicators, newColors } = await assignCalendarIndicators(
     diffs.map(d => ({ ...d.event, calendarName: d.calendarName })),
     config,
     cacheMap
@@ -541,7 +543,7 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
     }
   }
 
-  return output.trim();
+  return { message: output.trim(), newColors };
 }
 
 /**

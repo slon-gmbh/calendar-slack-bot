@@ -157,7 +157,7 @@ test('renderBundledNotification should group multiple changes by type', async ()
     }
   ];
 
-  const result = await renderBundledNotification(diffs, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
+  const { message: result } = await renderBundledNotification(diffs, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
   assert.match(result, /3 calendar changes/);
   assert.match(result, /Neuer Termin:/);
   assert.match(result, /Termin abgesagt:/);
@@ -250,7 +250,7 @@ test('renderBundledNotification should show color indicators for single calendar
     }
   ];
 
-  const result = await renderBundledNotification(diffs, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
+  const { message: result } = await renderBundledNotification(diffs, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
 
   // Should show color indicator (🟦, 🟩, etc.) not text name "· Team"
   assert.ok(result.includes('🟦') || result.includes('🟩') || result.includes('🟨') ||
@@ -287,8 +287,8 @@ test('renderBundledNotification should assign consistent colors to same calendar
     }
   ];
 
-  const resultTeam = await renderBundledNotification(diffsTeam, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
-  const resultVorstand = await renderBundledNotification(diffsVorstand, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
+  const { message: resultTeam } = await renderBundledNotification(diffsTeam, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
+  const { message: resultVorstand } = await renderBundledNotification(diffsVorstand, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
 
   // Extract color indicators from results
   const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
@@ -304,7 +304,7 @@ test('renderBundledNotification should assign consistent colors to same calendar
 
   // Now test with both calendars in one message - colors should stay consistent
   const diffsBoth = [...diffsTeam, ...diffsVorstand];
-  const resultBoth = await renderBundledNotification(diffsBoth, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
+  const { message: resultBoth } = await renderBundledNotification(diffsBoth, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
 
   assert.ok(resultBoth.includes(teamColor), 'Team should keep same color in multi-calendar message');
   assert.ok(resultBoth.includes(vorstandColor), 'Vorstand should keep same color in multi-calendar message');

@@ -101,6 +101,8 @@ function shouldPostErrorNotification(calendarId, errorMessage, cachedData) {
 async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, dryRun) {
   const channelCalendarMap = new Map();
   const cacheMap = await buildCacheMap(config);
+  const { loadCacheState, saveCacheState } = require('./cache.js');
+  const cacheDir = process.env.CACHE_DIR;
 
   for (const channel of config.channels) {
     // Check if channel subscribes to this calendar
@@ -121,10 +123,24 @@ async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, 
     // Post bundled notification (polling mode - no debounce)
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
-    const notification = await renderBundledNotification(notifiableDiffs, locale, timezone, { config, cacheMap });
+    const { message: notification, newColors } = await renderBundledNotification(notifiableDiffs, locale, timezone, { config, cacheMap });
 
     console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
     await postMessage(channel.id, notification, dryRun);
+
+    // Persist fetched colors to cache
+    if (newColors && cacheDir) {
+      for (const [calId, colorCache] of newColors.entries()) {
+        try {
+          const cached = await loadCacheState(calId, cacheDir);
+          if (cached) {
+            await saveCacheState(calId, cached.events, null, cacheDir, colorCache);
+          }
+        } catch (error) {
+          console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
+        }
+      }
+    }
 
     // Track that this calendar posted to this channel
     const calendarName = diffsWithCalendar[0]?.calendarName;
@@ -503,6 +519,8 @@ async function runEventChanged(config, dryRun) {
  */
 async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRun) {
   const cacheMap = await buildCacheMap(config);
+  const { loadCacheState, saveCacheState } = require('./cache.js');
+  const cacheDir = process.env.CACHE_DIR;
 
   for (const channel of config.channels) {
     if (!channel.calendars.includes(calendarId)) {
@@ -526,8 +544,22 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
       console.log(`Debounce window expired for channel ${channel.id} - posting ${pending.diffs.length} stale diffs`);
       const locale = channel.locale || config.locale;
       const timezone = channel.timezone || config.timezone || 'UTC';
-      const staleNotification = await renderBundledNotification(pending.diffs, locale, timezone, { config, cacheMap });
+      const { message: staleNotification, newColors: staleNewColors } = await renderBundledNotification(pending.diffs, locale, timezone, { config, cacheMap });
       await postMessage(channel.id, staleNotification, dryRun);
+
+      // Persist colors from stale diffs
+      if (staleNewColors && cacheDir) {
+        for (const [calId, colorCache] of staleNewColors.entries()) {
+          try {
+            const cached = await loadCacheState(calId, cacheDir);
+            if (cached) {
+              await saveCacheState(calId, cached.events, null, cacheDir, colorCache);
+            }
+          } catch (error) {
+            console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
+          }
+        }
+      }
     }
 
     // Now handle new diffs
@@ -544,8 +576,22 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
     // Post bundled notification
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
-    const notification = await renderBundledNotification(allDiffs, locale, timezone, { config, cacheMap });
+    const { message: notification, newColors } = await renderBundledNotification(allDiffs, locale, timezone, { config, cacheMap });
     await postMessage(channel.id, notification, dryRun);
+
+    // Persist fetched colors to cache
+    if (newColors && cacheDir) {
+      for (const [calId, colorCache] of newColors.entries()) {
+        try {
+          const cached = await loadCacheState(calId, cacheDir);
+          if (cached) {
+            await saveCacheState(calId, cached.events, null, cacheDir, colorCache);
+          }
+        } catch (error) {
+          console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
+        }
+      }
+    }
 
     // Clear debounce cache
     await savePendingNotifications(channel.id, []);
