@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { mapHexToEmoji } = require('../src/calendar-colors.js');
+const { mapHexToEmoji, fetchColorFromCalDAV } = require('../src/calendar-colors.js');
 
 test('mapHexToEmoji should map red hues to red emoji', () => {
   assert.equal(mapHexToEmoji('#ff0000'), '🟥'); // Pure red
@@ -55,4 +55,128 @@ test('mapHexToEmoji should return null for invalid hex', () => {
   assert.equal(mapHexToEmoji('not-a-color'), null);
   assert.equal(mapHexToEmoji(''), null);
   assert.equal(mapHexToEmoji(null), null);
+});
+
+test('fetchColorFromCalDAV should parse color from XML response', async () => {
+  const { XMLParser } = require('fast-xml-parser');
+
+  const mockXml = `<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:apple="http://apple.com/ns/ical/">
+  <d:response>
+    <d:propstat>
+      <d:prop>
+        <apple:calendar-color>#0082c9</apple:calendar-color>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>`;
+
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_"
+  });
+
+  const result = parser.parse(mockXml);
+  const color = result['d:multistatus']?.['d:response']?.['d:propstat']?.['d:prop']?.['apple:calendar-color'];
+
+  assert.equal(color, '#0082c9');
+});
+
+test('fetchColorFromCalDAV should return null on missing property', async () => {
+  const { XMLParser } = require('fast-xml-parser');
+
+  const mockXml = `<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:propstat>
+      <d:prop>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>`;
+
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_"
+  });
+
+  const result = parser.parse(mockXml);
+  const color = result['d:multistatus']?.['d:response']?.['d:propstat']?.['d:prop']?.['apple:calendar-color'];
+
+  assert.equal(color, undefined);
+});
+
+test('fetchColorFromCalDAV should fetch and parse color from CalDAV endpoint', async () => {
+  const mockResponse = `<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:apple="http://apple.com/ns/ical/">
+  <d:response>
+    <d:propstat>
+      <d:prop>
+        <apple:calendar-color>#0082c9</apple:calendar-color>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>`;
+
+  const originalFetch = global.fetch;
+  let fetchCalled = false;
+  let fetchOptions = null;
+
+  global.fetch = async (url, options) => {
+    fetchCalled = true;
+    fetchOptions = options;
+    return {
+      ok: true,
+      text: async () => mockResponse
+    };
+  };
+
+  const color = await fetchColorFromCalDAV('https://example.com/calendar', {
+    username: 'user',
+    password: 'pass'
+  });
+
+  global.fetch = originalFetch;
+
+  assert.equal(color, '#0082c9');
+  assert.equal(fetchCalled, true);
+  assert.equal(fetchOptions.method, 'PROPFIND');
+});
+
+test('fetchColorFromCalDAV should return null on network error', async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async () => {
+    throw new Error('Network error');
+  };
+
+  const color = await fetchColorFromCalDAV('https://example.com/calendar', {
+    username: 'user',
+    password: 'pass'
+  });
+
+  global.fetch = originalFetch;
+
+  assert.equal(color, null);
+});
+
+test('fetchColorFromCalDAV should return null on non-ok response', async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async () => {
+    return {
+      ok: false,
+      status: 404,
+      statusText: 'Not Found'
+    };
+  };
+
+  const color = await fetchColorFromCalDAV('https://example.com/calendar', {
+    username: 'user',
+    password: 'pass'
+  });
+
+  global.fetch = originalFetch;
+
+  assert.equal(color, null);
 });
