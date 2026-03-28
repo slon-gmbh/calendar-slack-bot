@@ -61,8 +61,8 @@ function detectChanges(oldEvent, newEvent) {
       return {
         type: 'time_changed',
         event: newEvent,
-        old: { start: oldEvent.start, end: oldEvent.end },
-        new: { start: newEvent.start, end: newEvent.end }
+        old: { start: oldEvent.start, end: oldEvent.end, isAllDay: oldEvent.isAllDay },
+        new: { start: newEvent.start, end: newEvent.end, isAllDay: newEvent.isAllDay }
       };
     }
     // Same rrule = same recurring pattern, skip time comparison for instances
@@ -86,8 +86,8 @@ function detectChanges(oldEvent, newEvent) {
       return {
         type: 'time_changed',
         event: newEvent,
-        old: { start: oldEvent.start, end: oldEvent.end },
-        new: { start: newEvent.start, end: newEvent.end }
+        old: { start: oldEvent.start, end: oldEvent.end, isAllDay: oldEvent.isAllDay },
+        new: { start: newEvent.start, end: newEvent.end, isAllDay: newEvent.isAllDay }
       };
     }
   }

@@ -31,7 +31,8 @@ const TRANSLATIONS = {
     calendarChanges: 'Kalenderänderungen',
     newEvents: 'neue',
     cancelledEvents: 'abgesagt',
-    modifiedEvents: 'geändert'
+    modifiedEvents: 'geändert',
+    allDay: 'Ganztägig'
   },
   'en-US': {
     week: 'Week',
@@ -53,7 +54,8 @@ const TRANSLATIONS = {
     calendarChanges: 'calendar changes',
     newEvents: 'new',
     cancelledEvents: 'cancelled',
-    modifiedEvents: 'modified'
+    modifiedEvents: 'modified',
+    allDay: 'All-day'
   }
 };
 
@@ -322,24 +324,43 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
       break;
 
     case 'time_changed':
-      const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
-      const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
-      const dateChanged = !isSameDay(old.start, newData.start, timezone);
-      const timeChanged = oldTime !== newTime2;
+      // Check if all-day status changed
+      const oldIsAllDay = old.isAllDay || false;
+      const newIsAllDay = newData.isAllDay || false;
+      const allDayLabel = getTranslation(locale, 'allDay');
 
-      if (dateChanged && !timeChanged) {
-        // Date changed, time stayed same: show oldDate time → newDate time
-        const oldDateStr = formatShortDate(old.start, locale, timezone);
-        const newDateStr = formatShortDate(newData.start, locale, timezone);
-        message = `*Termin verschoben:* ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime2}${calendar}`;
-      } else if (!dateChanged && timeChanged) {
-        // Time changed, date stayed same: show date · oldTime → newTime
-        message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+      if (oldIsAllDay !== newIsAllDay) {
+        // All-day status changed
+        if (oldIsAllDay && !newIsAllDay) {
+          // Changed from all-day to specific time
+          const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: false }, locale, timezone);
+          message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${allDayLabel} → ${newTime}${calendar}`;
+        } else {
+          // Changed from specific time to all-day
+          const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: false }, locale, timezone);
+          message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${allDayLabel}${calendar}`;
+        }
       } else {
-        // Both changed: show oldDate oldTime → newDate newTime
-        const oldDateStr = formatShortDate(old.start, locale, timezone);
-        const newDateStr = formatShortDate(newData.start, locale, timezone);
-        message = `*Termin verschoben:* ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime2}${calendar}`;
+        // All-day status unchanged, check date/time changes
+        const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: oldIsAllDay }, locale, timezone);
+        const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: newIsAllDay }, locale, timezone);
+        const dateChanged = !isSameDay(old.start, newData.start, timezone);
+        const timeChanged = oldTime !== newTime2;
+
+        if (dateChanged && !timeChanged) {
+          // Date changed, time stayed same: show oldDate time → newDate time
+          const oldDateStr = formatShortDate(old.start, locale, timezone);
+          const newDateStr = formatShortDate(newData.start, locale, timezone);
+          message = `*Termin verschoben:* ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime2}${calendar}`;
+        } else if (!dateChanged && timeChanged) {
+          // Time changed, date stayed same: show date · oldTime → newTime
+          message = `*Termin verschoben:* ${event.title} · ${dateStr} · ${oldTime} → ${newTime2}${calendar}`;
+        } else {
+          // Both changed: show oldDate oldTime → newDate newTime
+          const oldDateStr = formatShortDate(old.start, locale, timezone);
+          const newDateStr = formatShortDate(newData.start, locale, timezone);
+          message = `*Termin verschoben:* ${event.title} · ${oldDateStr} ${oldTime} → ${newDateStr} ${newTime2}${calendar}`;
+        }
       }
       break;
 

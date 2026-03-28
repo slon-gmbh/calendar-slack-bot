@@ -345,8 +345,8 @@ test('renderChangeNotification should show both old and new dates when date chan
       start: new Date('2026-03-27T18:00:00Z'),
       isAllDay: false
     },
-    old: { start: new Date('2026-03-26T18:00:00Z') },
-    new: { start: new Date('2026-03-27T18:00:00Z') },
+    old: { start: new Date('2026-03-26T18:00:00Z'), isAllDay: false },
+    new: { start: new Date('2026-03-27T18:00:00Z'), isAllDay: false },
     calendarName: 'Vorstand'
   };
 
@@ -373,8 +373,8 @@ test('renderChangeNotification should show date once when only time changes (sam
       start: new Date('2026-03-27T18:00:00Z'),
       isAllDay: false
     },
-    old: { start: new Date('2026-03-27T17:00:00Z') },
-    new: { start: new Date('2026-03-27T18:00:00Z') },
+    old: { start: new Date('2026-03-27T17:00:00Z'), isAllDay: false },
+    new: { start: new Date('2026-03-27T18:00:00Z'), isAllDay: false },
     calendarName: 'Vorstand'
   };
 
@@ -398,8 +398,8 @@ test('renderChangeNotification should show both dates and times when both change
       start: new Date('2026-03-27T18:00:00Z'),
       isAllDay: false
     },
-    old: { start: new Date('2026-03-26T17:00:00Z') },
-    new: { start: new Date('2026-03-27T18:00:00Z') },
+    old: { start: new Date('2026-03-26T17:00:00Z'), isAllDay: false },
+    new: { start: new Date('2026-03-27T18:00:00Z'), isAllDay: false },
     calendarName: 'Vorstand'
   };
 
@@ -413,4 +413,77 @@ test('renderChangeNotification should show both dates and times when both change
   assert.match(result, /19:00/, 'Should show new time (19:00 Berlin)');
   // Should have arrow between them
   assert.match(result, /→/, 'Should have arrow');
+});
+
+test('renderChangeNotification should show all-day to specific time change clearly', () => {
+  // Issue #11: When event changes from all-day to specific time
+  // Should show: Ganztägig → 18:00
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Test27',
+      start: new Date('2026-03-29T18:00:00Z'),
+      isAllDay: false
+    },
+    old: { start: new Date('2026-03-29T00:00:00Z'), isAllDay: true },
+    new: { start: new Date('2026-03-29T18:00:00Z'), isAllDay: false },
+    calendarName: 'Abeona-Termine'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'Europe/Berlin');
+
+  // Should show "Ganztägig → 20:00" (18:00 UTC = 20:00 Berlin in DST)
+  assert.match(result, /Ganztägig/, 'Should show "Ganztägig"');
+  assert.match(result, /20:00/, 'Should show new time (20:00 Berlin)');
+  assert.match(result, /→/, 'Should have arrow');
+  assert.match(result, /Ganztägig\s*→\s*20:00/, 'Should show "Ganztägig → 20:00"');
+  // Should NOT show confusing times like 01:00
+  assert.ok(!result.match(/01:00/), 'Should not show midnight time');
+});
+
+test('renderChangeNotification should show specific time to all-day change clearly', () => {
+  // Issue #11: When event changes from specific time to all-day
+  // Should show: 18:00 → Ganztägig
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Test',
+      start: new Date('2026-03-29T00:00:00Z'),
+      isAllDay: true
+    },
+    old: { start: new Date('2026-03-29T18:00:00Z'), isAllDay: false },
+    new: { start: new Date('2026-03-29T00:00:00Z'), isAllDay: true },
+    calendarName: 'Team'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'Europe/Berlin');
+
+  // Should show "20:00 → Ganztägig" (18:00 UTC = 20:00 Berlin in DST)
+  assert.match(result, /Ganztägig/, 'Should show "Ganztägig"');
+  assert.match(result, /20:00/, 'Should show old time (20:00 Berlin)');
+  assert.match(result, /→/, 'Should have arrow');
+  assert.match(result, /20:00\s*→\s*Ganztägig/, 'Should show "20:00 → Ganztägig"');
+});
+
+test('renderChangeNotification should use locale for all-day label', () => {
+  // Should use "All-day" in English
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Test',
+      start: new Date('2026-03-29T18:00:00Z'),
+      isAllDay: false
+    },
+    old: { start: new Date('2026-03-29T00:00:00Z'), isAllDay: true },
+    new: { start: new Date('2026-03-29T18:00:00Z'), isAllDay: false },
+    calendarName: 'Team'
+  };
+
+  const result = renderChangeNotification(diff, 'en-US', 'UTC');
+
+  assert.match(result, /All-day/, 'Should show "All-day" in English');
+  assert.match(result, /All-day\s*→\s*06:00 PM/, 'Should show "All-day → 06:00 PM"');
 });
