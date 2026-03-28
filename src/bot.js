@@ -38,9 +38,13 @@ const dryRun = args.includes('--dry-run');
 async function buildCacheMap(config) {
   const cacheMap = new Map();
   for (const calendarId of Object.keys(config.calendars)) {
-    const cached = await loadCachedEvents(calendarId);
-    if (cached) {
-      cacheMap.set(calendarId, cached);
+    try {
+      const cached = await loadCachedEvents(calendarId);
+      if (cached) {
+        cacheMap.set(calendarId, cached);
+      }
+    } catch (error) {
+      console.warn(`Failed to load cache for calendar ${calendarId}:`, error.message);
     }
   }
   return cacheMap;
@@ -96,6 +100,7 @@ function shouldPostErrorNotification(calendarId, errorMessage, cachedData) {
  */
 async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, dryRun) {
   const channelCalendarMap = new Map();
+  const cacheMap = await buildCacheMap(config);
 
   for (const channel of config.channels) {
     // Check if channel subscribes to this calendar
@@ -116,7 +121,6 @@ async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, 
     // Post bundled notification (polling mode - no debounce)
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
-    const cacheMap = await buildCacheMap(config);
     const notification = await renderBundledNotification(notifiableDiffs, locale, timezone, { config, cacheMap });
 
     console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
@@ -498,6 +502,8 @@ async function runEventChanged(config, dryRun) {
  * @returns {Promise<void>}
  */
 async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRun) {
+  const cacheMap = await buildCacheMap(config);
+
   for (const channel of config.channels) {
     if (!channel.calendars.includes(calendarId)) {
       continue; // This channel doesn't subscribe to this calendar
@@ -520,7 +526,6 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
       console.log(`Debounce window expired for channel ${channel.id} - posting ${pending.diffs.length} stale diffs`);
       const locale = channel.locale || config.locale;
       const timezone = channel.timezone || config.timezone || 'UTC';
-      const cacheMap = await buildCacheMap(config);
       const staleNotification = await renderBundledNotification(pending.diffs, locale, timezone, { config, cacheMap });
       await postMessage(channel.id, staleNotification, dryRun);
     }
@@ -539,7 +544,6 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
     // Post bundled notification
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
-    const cacheMap = await buildCacheMap(config);
     const notification = await renderBundledNotification(allDiffs, locale, timezone, { config, cacheMap });
     await postMessage(channel.id, notification, dryRun);
 
