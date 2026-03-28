@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { mapHexToEmoji, fetchColorFromCalDAV, loadColorFromCache, createColorCacheObject } = require('../src/calendar-colors.js');
+const { mapHexToEmoji, fetchColorFromCalDAV, loadColorFromCache, createColorCacheObject, getCalendarColor } = require('../src/calendar-colors.js');
 
 test('mapHexToEmoji should map red hues to red emoji', () => {
   assert.equal(mapHexToEmoji('#ff0000'), '🟥'); // Pure red
@@ -225,4 +225,65 @@ test('createColorCacheObject should create proper structure', () => {
     emoji: '🟦',
     source: 'caldav'
   });
+});
+
+test('getCalendarColor should use config override first', async () => {
+  const config = {
+    calendars: {
+      'test-cal': {
+        name: 'Test Calendar',
+        caldav_url: 'https://example.com/cal/',
+        color: '#ff0000'
+      }
+    },
+    caldav_credentials: { username: 'user', password: 'pass' }
+  };
+
+  const cache = null;
+
+  const result = await getCalendarColor('test-cal', config, cache);
+  assert.equal(result.emoji, '🟥');
+  assert.equal(result.source, 'config');
+});
+
+test('getCalendarColor should use cache if available', async () => {
+  const config = {
+    calendars: {
+      'test-cal': {
+        name: 'Test Calendar',
+        caldav_url: 'https://example.com/cal/'
+      }
+    },
+    caldav_credentials: { username: 'user', password: 'pass' }
+  };
+
+  const cache = {
+    color: {
+      hex: '#0082c9',
+      emoji: '🟦',
+      source: 'caldav'
+    }
+  };
+
+  const result = await getCalendarColor('test-cal', config, cache);
+  assert.equal(result.emoji, '🟦');
+  assert.equal(result.source, 'caldav');
+});
+
+test('getCalendarColor should fall back to hash if all else fails', async () => {
+  const config = {
+    calendars: {
+      'test-cal': {
+        name: 'Test Calendar',
+        caldav_url: 'https://example.com/cal/'
+      }
+    },
+    caldav_credentials: { username: 'user', password: 'pass' }
+  };
+
+  const cache = null;
+
+  const result = await getCalendarColor('test-cal', config, cache);
+  assert.ok(result.emoji);
+  assert.equal(result.source, 'hash');
 });

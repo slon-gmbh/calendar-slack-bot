@@ -127,6 +127,22 @@ function createColorCacheObject(hex, emoji, source) {
   return { hex, emoji, source };
 }
 
+const CALENDAR_INDICATORS = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+
+/**
+ * Hash calendar name to consistent indicator index
+ * @param {string} calendarName - Calendar name
+ * @returns {number} Index in CALENDAR_INDICATORS array
+ */
+function hashCalendarName(calendarName) {
+  let hash = 0;
+  for (let i = 0; i < calendarName.length; i++) {
+    hash = ((hash << 5) - hash) + calendarName.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash) % CALENDAR_INDICATORS.length;
+}
+
 /**
  * Fetch calendar color from CalDAV via PROPFIND
  * @param {string} caldavUrl - CalDAV calendar URL
@@ -194,11 +210,68 @@ async function fetchColorFromCalDAV(caldavUrl, credentials) {
   }
 }
 
+/**
+ * Get color indicator for a calendar (hybrid resolution)
+ * Priority: config override → cache → CalDAV fetch → hash fallback
+ * @param {string} calendarId - Calendar ID from config
+ * @param {Object} config - Full config object
+ * @param {Object} cache - Calendar state cache
+ * @returns {Promise<Object>} {emoji, source, hex}
+ */
+async function getCalendarColor(calendarId, config, cache) {
+  const calendarConfig = config.calendars[calendarId];
+  if (!calendarConfig) {
+    console.error(`Calendar ${calendarId} not found in config`);
+    return { emoji: '🟦', source: 'hash', hex: null };
+  }
+
+  const calendarName = calendarConfig.name;
+
+  if (calendarConfig.color) {
+    const emoji = mapHexToEmoji(calendarConfig.color);
+    if (emoji) {
+      console.info(`Using configured color ${calendarConfig.color} → ${emoji} for calendar '${calendarName}' (source: config)`);
+      return { emoji, source: 'config', hex: calendarConfig.color };
+    } else {
+      console.warn(`Invalid hex color '${calendarConfig.color}' in config for '${calendarName}', using fallback`);
+    }
+  }
+
+  const cachedEmoji = loadColorFromCache(cache);
+  if (cachedEmoji) {
+    return { emoji: cachedEmoji, source: 'caldav', hex: cache.color.hex };
+  }
+
+  const caldavUrl = calendarConfig.caldav_url;
+  const credentials = config.caldav_credentials;
+
+  if (caldavUrl && credentials) {
+    try {
+      const hexColor = await fetchColorFromCalDAV(caldavUrl, credentials);
+      if (hexColor) {
+        const emoji = mapHexToEmoji(hexColor);
+        if (emoji) {
+          console.info(`Fetched color ${hexColor} → ${emoji} for calendar '${calendarName}' (source: caldav)`);
+          return { emoji, source: 'caldav', hex: hexColor };
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to fetch color for '${calendarName}':`, error.message);
+    }
+  }
+
+  const index = hashCalendarName(calendarName);
+  const emoji = CALENDAR_INDICATORS[index];
+  console.info(`Using hash-based fallback for calendar '${calendarName}' → ${emoji} (source: hash)`);
+  return { emoji, source: 'hash', hex: null };
+}
+
 module.exports = {
   mapHexToEmoji,
   parseHex,
   rgbToHsl,
   fetchColorFromCalDAV,
   loadColorFromCache,
-  createColorCacheObject
+  createColorCacheObject,
+  getCalendarColor
 };
