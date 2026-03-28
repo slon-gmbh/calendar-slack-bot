@@ -25,7 +25,7 @@ test('formatEventTime should format time based on locale', () => {
   assert.match(deDE, /\d{2}:\d{2}/); // German 24-hour format
 });
 
-test('renderWeekView should generate week digest with all-day events first', () => {
+test('renderWeekView should generate week digest with all-day events first', async () => {
   const events = [
     {
       id: 'e1',
@@ -50,7 +50,7 @@ test('renderWeekView should generate week digest with all-day events first', () 
     end: new Date('2026-03-30T23:59:59Z')    // Sunday
   };
 
-  const result = renderWeekView(events, dateRange, 'en-US', { showEmptyDays: false });
+  const result = await renderWeekView(events, dateRange, 'en-US', { showEmptyDays: false, config: {}, cacheMap: new Map() });
 
   // All-day events should appear before timed events
   const projectIndex = result.indexOf('Project Deadline');
@@ -121,7 +121,7 @@ test('renderChangeNotification should format cancelled events', () => {
   assert.match(result, /Cancelled Meeting/);
 });
 
-test('renderBundledNotification should group multiple changes by type', () => {
+test('renderBundledNotification should group multiple changes by type', async () => {
   const diffs = [
     {
       type: 'new',
@@ -157,7 +157,7 @@ test('renderBundledNotification should group multiple changes by type', () => {
     }
   ];
 
-  const result = renderBundledNotification(diffs, 'en-US');
+  const result = await renderBundledNotification(diffs, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
   assert.match(result, /3 calendar changes/);
   assert.match(result, /Neuer Termin:/);
   assert.match(result, /Termin abgesagt:/);
@@ -167,7 +167,7 @@ test('renderBundledNotification should group multiple changes by type', () => {
   assert.match(result, /Moved Meeting/);
 });
 
-test('renderDailyView should use Today/Tomorrow labels', () => {
+test('renderDailyView should use Today/Tomorrow labels', async () => {
   const now = new Date();
   const todayEvents = [
     {
@@ -200,7 +200,7 @@ test('renderDailyView should use Today/Tomorrow labels', () => {
   endOfTomorrow.setHours(23, 59, 59, 999);
 
   const dateRange = { start: startOfToday, end: endOfTomorrow };
-  const result = renderDailyView(allEvents, dateRange, 'en-US');
+  const result = await renderDailyView(allEvents, dateRange, 'en-US', { config: {}, cacheMap: new Map() });
 
   assert.match(result, /Today/);
   assert.match(result, /Tomorrow/);
@@ -208,7 +208,7 @@ test('renderDailyView should use Today/Tomorrow labels', () => {
   assert.match(result, /Afternoon Review/);
 });
 
-test('renderCanvasContent should filter to current week', () => {
+test('renderCanvasContent should filter to current week', async () => {
   const now = new Date();
   const thisWeekEvent = {
     id: 'e1',
@@ -229,13 +229,13 @@ test('renderCanvasContent should filter to current week', () => {
   };
 
   const allEvents = [thisWeekEvent, nextWeekEvent];
-  const result = renderCanvasContent(allEvents, { locale: 'en-US' });
+  const result = await renderCanvasContent(allEvents, { locale: 'en-US', config: {}, cacheMap: new Map() });
 
   assert.match(result, /This Week Event/);
   assert.ok(!result.includes('Next Week Event'), 'Should not include next week events');
 });
 
-test('renderBundledNotification should show color indicators for single calendar', () => {
+test('renderBundledNotification should show color indicators for single calendar', async () => {
   // Issue #8: Change notifications should show color indicators instead of text names
   const diffs = [
     {
@@ -250,7 +250,7 @@ test('renderBundledNotification should show color indicators for single calendar
     }
   ];
 
-  const result = renderBundledNotification(diffs, 'en-US');
+  const result = await renderBundledNotification(diffs, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
 
   // Should show color indicator (🟦, 🟩, etc.) not text name "· Team"
   assert.ok(result.includes('🟦') || result.includes('🟩') || result.includes('🟨') ||
@@ -259,7 +259,7 @@ test('renderBundledNotification should show color indicators for single calendar
   assert.ok(!result.includes('· Team'), 'Should not show text calendar name');
 });
 
-test('renderBundledNotification should assign consistent colors to same calendar', () => {
+test('renderBundledNotification should assign consistent colors to same calendar', async () => {
   // Issue #8: Same calendar should get same color across different messages
   const diffsTeam = [
     {
@@ -287,8 +287,8 @@ test('renderBundledNotification should assign consistent colors to same calendar
     }
   ];
 
-  const resultTeam = renderBundledNotification(diffsTeam, 'en-US');
-  const resultVorstand = renderBundledNotification(diffsVorstand, 'en-US');
+  const resultTeam = await renderBundledNotification(diffsTeam, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
+  const resultVorstand = await renderBundledNotification(diffsVorstand, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
 
   // Extract color indicators from results
   const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
@@ -304,7 +304,7 @@ test('renderBundledNotification should assign consistent colors to same calendar
 
   // Now test with both calendars in one message - colors should stay consistent
   const diffsBoth = [...diffsTeam, ...diffsVorstand];
-  const resultBoth = renderBundledNotification(diffsBoth, 'en-US');
+  const resultBoth = await renderBundledNotification(diffsBoth, 'en-US', 'UTC', { config: {}, cacheMap: new Map() });
 
   assert.ok(resultBoth.includes(teamColor), 'Team should keep same color in multi-calendar message');
   assert.ok(resultBoth.includes(vorstandColor), 'Vorstand should keep same color in multi-calendar message');

@@ -2,7 +2,7 @@
  * Formatting and rendering module for digest messages and Canvas content
  */
 
-const { CALENDAR_INDICATORS, hashCalendarName } = require('./calendar-colors');
+const { CALENDAR_INDICATORS, hashCalendarName, getCalendarColor, createColorCacheObject } = require('./calendar-colors');
 
 /**
  * Locale-specific translations
@@ -65,20 +65,40 @@ function getTranslation(locale, key) {
 /**
  * Assign color indicators to calendars
  * @param {Array} events - Events with calendarName property
- * @returns {Map} Map of calendar name to indicator
+ * @param {Object} config - Full config object
+ * @param {Map} cacheMap - Map of calendarId to cache objects
+ * @returns {Promise<Object>} {indicatorMap: Map, newColors: Map} where newColors are colors to cache
  */
-function assignCalendarIndicators(events) {
+async function assignCalendarIndicators(events, config, cacheMap) {
   const uniqueCalendars = [...new Set(events.map(e => e.calendarName).filter(Boolean))];
 
-  // Always assign indicators using consistent hash-based mapping
-  // This ensures each calendar gets same color across all messages
   const indicatorMap = new Map();
-  uniqueCalendars.forEach((cal) => {
-    const index = hashCalendarName(cal);
-    indicatorMap.set(cal, CALENDAR_INDICATORS[index]);
-  });
+  const newColors = new Map();
 
-  return indicatorMap;
+  for (const calendarName of uniqueCalendars) {
+    const calendarId = Object.keys(config.calendars || {}).find(
+      id => config.calendars[id].name === calendarName
+    );
+
+    if (!calendarId) {
+      console.warn(`Calendar name '${calendarName}' not found in config, using hash fallback`);
+      const index = hashCalendarName(calendarName);
+      indicatorMap.set(calendarName, CALENDAR_INDICATORS[index]);
+      continue;
+    }
+
+    const cache = cacheMap?.get(calendarId);
+    const colorResult = await getCalendarColor(calendarId, config, cache);
+
+    indicatorMap.set(calendarName, colorResult.emoji);
+
+    if (colorResult.source === 'caldav' && colorResult.hex) {
+      const colorCache = createColorCacheObject(colorResult.hex, colorResult.emoji, 'caldav');
+      newColors.set(calendarId, colorCache);
+    }
+  }
+
+  return { indicatorMap, newColors };
 }
 
 /**
@@ -177,11 +197,11 @@ function getWeekNumber(date) {
  * @param {Array} events - Array of event objects
  * @param {Object} dateRange - { start: Date, end: Date }
  * @param {string} locale - Locale for formatting
- * @param {Object} options - { showEmptyDays, viewMode, eventDetail, timezone }
- * @returns {string} Formatted week view
+ * @param {Object} options - { showEmptyDays, viewMode, eventDetail, timezone, config, cacheMap }
+ * @returns {Promise<string>} Formatted week view
  */
-function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
-  const { showEmptyDays = false, viewMode = 'merged', eventDetail = 'standard', timezone = 'UTC' } = options;
+async function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
+  const { showEmptyDays = false, viewMode = 'merged', eventDetail = 'standard', timezone = 'UTC', config = {}, cacheMap = new Map() } = options;
 
   const weekNum = getWeekNumber(dateRange.start);
   const weekLabel = getTranslation(locale, 'week');
@@ -191,7 +211,7 @@ function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
   let output = `*${weekOverview}: ${weekLabel} ${weekNum} · ${dateRangeStr}*\n\n`;
 
   // Assign calendar indicators (only if multiple calendars)
-  const calendarIndicators = assignCalendarIndicators(events);
+  const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(events, config, cacheMap);
 
   // Group events by day
   const eventsByDay = new Map();
@@ -377,17 +397,22 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
  * @param {Array} diffs - Array of diff objects
  * @param {string} locale - Locale for formatting
  * @param {string} timezone - IANA timezone
- * @returns {string} Formatted bundled notification
+ * @param {Object} options - Options including config and cacheMap
+ * @returns {Promise<string>} Formatted bundled notification
  */
-function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
+async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC', options = {}) {
   if (diffs.length === 0) return '';
   if (diffs.length === 1) return renderChangeNotification(diffs[0], locale, timezone);
+
+  const { config = {}, cacheMap = new Map() } = options;
 
   let output = `*${diffs.length} ${getTranslation(locale, 'calendarChanges')}*\n\n`;
 
   // Assign calendar indicators (color flags) for multi-calendar channels
-  const calendarIndicators = assignCalendarIndicators(
-    diffs.map(d => ({ ...d.event, calendarName: d.calendarName }))
+  const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(
+    diffs.map(d => ({ ...d.event, calendarName: d.calendarName })),
+    config,
+    cacheMap
   );
 
   // Group by change type
@@ -524,16 +549,16 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
  * @param {Array} events - Array of event objects
  * @param {Object} dateRange - { start: Date, end: Date } (typically today + tomorrow)
  * @param {string} locale - Locale for formatting
- * @param {Object} options - Rendering options including timezone
- * @returns {string} Formatted daily view
+ * @param {Object} options - Rendering options including timezone, config, cacheMap
+ * @returns {Promise<string>} Formatted daily view
  */
-function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
-  const { showEmptyDays = false, eventDetail = 'standard', timezone = 'UTC' } = options;
+async function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
+  const { showEmptyDays = false, eventDetail = 'standard', timezone = 'UTC', config = {}, cacheMap = new Map() } = options;
 
   let output = `*${getTranslation(locale, 'today')} / ${getTranslation(locale, 'tomorrow')}*\n\n`;
 
   // Assign calendar indicators
-  const calendarIndicators = assignCalendarIndicators(events);
+  const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(events, config, cacheMap);
 
   // Helper function to get local date key (YYYY-MM-DD) without timezone conversion
   function getLocalDateKey(date) {
@@ -625,9 +650,9 @@ function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
  * Render Canvas content (markdown format)
  * @param {Array} events - Array of event objects
  * @param {Object} options - Rendering options
- * @returns {string} Canvas markdown
+ * @returns {Promise<string>} Canvas markdown
  */
-function renderCanvasContent(events, options = {}) {
+async function renderCanvasContent(events, options = {}) {
   const { locale = 'en-US' } = options;
 
   // Get current week range
@@ -649,7 +674,7 @@ function renderCanvasContent(events, options = {}) {
     return eventDate >= dateRange.start && eventDate <= dateRange.end;
   });
 
-  return renderWeekView(weekEvents, dateRange, locale, options);
+  return await renderWeekView(weekEvents, dateRange, locale, options);
 }
 
 /**
