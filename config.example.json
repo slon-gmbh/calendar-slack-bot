@@ -1,4 +1,5 @@
 {
+  "_comment": "Optional 'color' field in calendars: Override calendar color with hex format (e.g., '#0082c9'). If not specified, color is fetched from CalDAV or defaults to hash-based assignment.",
   "locale": "en-US",
   "timezone": "UTC",
   "error_channel": "C01234ERROR",
@@ -9,7 +10,8 @@
   "calendars": {
     "team-calendar": {
       "name": "Team Calendar",
-      "caldav_url": "https://nextcloud.example.com/remote.php/dav/calendars/user/team/"
+      "caldav_url": "https://nextcloud.example.com/remote.php/dav/calendars/user/team/",
+      "color": "#0082c9"
     },
     "project-x": {
       "name": "Project X",
