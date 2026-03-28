@@ -83,10 +83,9 @@ function mapHexToEmoji(hexColor) {
   }
 
   if (h >= 0 && h < 30) return '🟥';
-  if (h >= 30 && h < 60) return '🟧';
-  if (h >= 60 && h < 90) return '🟨';
-  if (h >= 90 && h < 150) return '🟩';
-  if (h >= 150 && h < 200) return '🟦';
+  if (h >= 30 && h < 70) return '🟧';
+  if (h >= 70 && h < 160) return '🟨';
+  if (h >= 160 && h < 200) return '🟩';
   if (h >= 200 && h < 270) return '🟦';
   if (h >= 270 && h < 330) return '🟪';
   if (h >= 330 && h <= 360) return '🟥';

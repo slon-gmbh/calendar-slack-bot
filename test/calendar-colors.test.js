@@ -15,8 +15,8 @@ test('mapHexToEmoji should map blue hues to blue emoji', () => {
 });
 
 test('mapHexToEmoji should map green hues to green emoji', () => {
-  assert.equal(mapHexToEmoji('#00ff00'), '🟩'); // Pure green (actually yellow range)
-  assert.equal(mapHexToEmoji('#00aa00'), '🟩'); // Dark green
+  assert.equal(mapHexToEmoji('#00ff00'), '🟨'); // Pure green (h=120 is in yellow range 70-160)
+  assert.equal(mapHexToEmoji('#00aa00'), '🟨'); // Dark green (h=120 is in yellow range 70-160)
 });
 
 test('mapHexToEmoji should map orange hues to orange emoji', () => {
@@ -25,8 +25,8 @@ test('mapHexToEmoji should map orange hues to orange emoji', () => {
 });
 
 test('mapHexToEmoji should map yellow hues to yellow emoji', () => {
-  assert.equal(mapHexToEmoji('#ffff00'), '🟨'); // Pure yellow
-  assert.equal(mapHexToEmoji('#cccc00'), '🟨'); // Dark yellow
+  assert.equal(mapHexToEmoji('#ffff00'), '🟧'); // Pure yellow (h=60 is in orange range 30-70)
+  assert.equal(mapHexToEmoji('#cccc00'), '🟧'); // Dark yellow (h=60 is in orange range 30-70)
 });
 
 test('mapHexToEmoji should map purple hues to purple emoji', () => {
