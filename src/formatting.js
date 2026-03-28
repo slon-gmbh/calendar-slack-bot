@@ -325,8 +325,14 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
 
     case 'time_changed':
       // Check if all-day status changed
-      const oldIsAllDay = old.isAllDay || false;
-      const newIsAllDay = newData.isAllDay || false;
+      // Handle legacy cached events that might not have isAllDay flag
+      // Infer all-day from midnight start time if flag is missing
+      const oldIsAllDay = old.isAllDay !== undefined
+        ? old.isAllDay
+        : (old.start && new Date(old.start).getUTCHours() === 0 && new Date(old.start).getUTCMinutes() === 0);
+      const newIsAllDay = newData.isAllDay !== undefined
+        ? newData.isAllDay
+        : (newData.start && new Date(newData.start).getUTCHours() === 0 && new Date(newData.start).getUTCMinutes() === 0);
       const allDayLabel = getTranslation(locale, 'allDay');
 
       if (oldIsAllDay !== newIsAllDay) {

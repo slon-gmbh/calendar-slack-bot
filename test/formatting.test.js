@@ -487,3 +487,34 @@ test('renderChangeNotification should use locale for all-day label', () => {
   assert.match(result, /All-day/, 'Should show "All-day" in English');
   assert.match(result, /All-day\s*→\s*06:00 PM/, 'Should show "All-day → 06:00 PM"');
 });
+
+test('renderChangeNotification should infer all-day status from midnight when flag missing', () => {
+  // Legacy cached events might not have isAllDay flag
+  // Should infer all-day from midnight start time
+  const diff = {
+    type: 'time_changed',
+    event: {
+      id: 'e1',
+      title: 'Team-Testing',
+      start: new Date('2026-03-28T09:00:00Z'),
+      isAllDay: false
+    },
+    old: {
+      start: new Date('2026-03-28T00:00:00Z'), // Midnight = infer all-day
+      isAllDay: undefined // Missing flag
+    },
+    new: {
+      start: new Date('2026-03-28T09:00:00Z'),
+      isAllDay: false
+    },
+    calendarName: 'Team'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'Europe/Berlin');
+
+  // Should detect as all-day → specific time change
+  assert.match(result, /Ganztägig/, 'Should infer all-day from midnight');
+  assert.match(result, /Ganztägig\s*→\s*10:00/, 'Should show "Ganztägig → 10:00"');
+  // Should NOT show confusing midnight time
+  assert.ok(!result.match(/01:00\s*→/), 'Should not show "01:00 →"');
+});
