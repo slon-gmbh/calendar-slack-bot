@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { mapHexToEmoji, fetchColorFromCalDAV } = require('../src/calendar-colors.js');
+const { mapHexToEmoji, fetchColorFromCalDAV, loadColorFromCache, createColorCacheObject } = require('../src/calendar-colors.js');
 
 test('mapHexToEmoji should map red hues to red emoji', () => {
   assert.equal(mapHexToEmoji('#ff0000'), '🟥'); // Pure red
@@ -179,4 +179,50 @@ test('fetchColorFromCalDAV should return null on non-ok response', async () => {
   global.fetch = originalFetch;
 
   assert.equal(color, null);
+});
+
+test('loadColorFromCache should return emoji from valid cache', () => {
+  const cache = {
+    timestamp: '2026-03-28T10:00:00Z',
+    events: [],
+    color: {
+      hex: '#0082c9',
+      emoji: '🟦',
+      source: 'caldav'
+    }
+  };
+
+  assert.equal(loadColorFromCache(cache), '🟦');
+});
+
+test('loadColorFromCache should return null for missing color', () => {
+  const cache = {
+    timestamp: '2026-03-28T10:00:00Z',
+    events: []
+  };
+
+  assert.equal(loadColorFromCache(cache), null);
+});
+
+test('loadColorFromCache should return null for invalid structure', () => {
+  const cache = {
+    timestamp: '2026-03-28T10:00:00Z',
+    events: [],
+    color: {
+      hex: '#0082c9',
+      source: 'caldav'
+    }
+  };
+
+  assert.equal(loadColorFromCache(cache), null);
+});
+
+test('createColorCacheObject should create proper structure', () => {
+  const result = createColorCacheObject('#0082c9', '🟦', 'caldav');
+
+  assert.deepEqual(result, {
+    hex: '#0082c9',
+    emoji: '🟦',
+    source: 'caldav'
+  });
 });

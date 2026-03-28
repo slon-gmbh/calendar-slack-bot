@@ -21,6 +21,7 @@
   "dependencies": {
     "@actions/cache": "^3.0.0",
     "@slack/web-api": "^7.0.0",
+    "fast-xml-parser": "^5.5.9",
     "node-ical": "^0.18.0"
   },
   "devDependencies": {

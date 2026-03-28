@@ -96,6 +96,38 @@ function mapHexToEmoji(hexColor) {
 }
 
 /**
+ * Load color from cache
+ * @param {Object} cache - Calendar cache object from loadCacheState()
+ * @returns {string|null} Emoji indicator or null
+ */
+function loadColorFromCache(cache) {
+  if (!cache || !cache.color) {
+    return null;
+  }
+
+  const { emoji, hex, source } = cache.color;
+
+  if (!emoji || typeof emoji !== 'string') {
+    console.warn('Invalid color cache structure, missing emoji');
+    return null;
+  }
+
+  console.debug(`Using cached color ${hex} → ${emoji} (source: ${source})`);
+  return emoji;
+}
+
+/**
+ * Create color cache object for saving
+ * @param {string} hex - Hex color
+ * @param {string} emoji - Emoji indicator
+ * @param {string} source - 'caldav', 'config', or 'hash'
+ * @returns {Object} Color cache object
+ */
+function createColorCacheObject(hex, emoji, source) {
+  return { hex, emoji, source };
+}
+
+/**
  * Fetch calendar color from CalDAV via PROPFIND
  * @param {string} caldavUrl - CalDAV calendar URL
  * @param {Object} credentials - {username, password}
@@ -166,5 +198,7 @@ module.exports = {
   mapHexToEmoji,
   parseHex,
   rgbToHsl,
-  fetchColorFromCalDAV
+  fetchColorFromCalDAV,
+  loadColorFromCache,
+  createColorCacheObject
 };

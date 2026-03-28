@@ -71,9 +71,10 @@ async function loadCacheState(calendarId, cacheDir) {
  * @param {Array} events - Calendar events to cache
  * @param {Object} errorState - Error metadata { last_error, error_notified_at }
  * @param {string} cacheDir - Directory to write cache files
+ * @param {Object} color - Optional: {hex, emoji, source}
  * @returns {Promise<void>}
  */
-async function saveCacheState(calendarId, events, errorState, cacheDir) {
+async function saveCacheState(calendarId, events, errorState, cacheDir, color = null) {
   if (!cacheDir) {
     throw new Error('cacheDir is required');
   }
@@ -84,7 +85,8 @@ async function saveCacheState(calendarId, events, errorState, cacheDir) {
     events: events || [],
     updated_at: new Date().toISOString(),
     ...(errorState?.last_error && { last_error: errorState.last_error }),
-    ...(errorState?.error_notified_at && { error_notified_at: errorState.error_notified_at })
+    ...(errorState?.error_notified_at && { error_notified_at: errorState.error_notified_at }),
+    ...(color && { color })
   };
 
   await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
