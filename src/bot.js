@@ -22,7 +22,7 @@
 const { loadConfig } = require('./config.js');
 const { fetchCalendar } = require('./caldav.js');
 const { postMessage, updateCanvas, postErrorNotification } = require('./slack.js');
-const { renderWeekView, renderDailyView, renderCanvasContent, renderBundledNotification } = require('./formatting.js');
+const { renderWeekView, renderDailyView, renderCanvasContent, renderBundledNotification, renderCalendarLegend } = require('./formatting.js');
 const { diffEvents, loadCachedEvents, saveCachedEvents, loadPendingNotifications, savePendingNotifications } = require('./diff.js');
 const { matchesSchedule, shouldNotifyNow } = require('./scheduler.js');
 
@@ -76,9 +76,11 @@ function shouldPostErrorNotification(calendarId, errorMessage, cachedData) {
  * @param {string} calendarId - Calendar identifier
  * @param {Array} diffsWithCalendar - Diffs with calendar name attached
  * @param {boolean} dryRun - Dry run mode flag
- * @returns {Promise<void>}
+ * @returns {Promise<Map>} Map of channel ID to calendar name (for tracking which calendars posted to each channel)
  */
 async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, dryRun) {
+  const channelCalendarMap = new Map();
+
   for (const channel of config.channels) {
     // Check if channel subscribes to this calendar
     if (!channel.calendars.includes(calendarId)) {
@@ -102,7 +104,15 @@ async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, 
 
     console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
     await postMessage(channel.id, notification, dryRun);
+
+    // Track that this calendar posted to this channel
+    const calendarName = diffsWithCalendar[0]?.calendarName;
+    if (calendarName) {
+      channelCalendarMap.set(channel.id, calendarName);
+    }
   }
+
+  return channelCalendarMap;
 }
 
 /**
@@ -124,6 +134,9 @@ async function runChangeDetection(config, dryRun) {
   const dateRange = getChangeDetectionRange();
 
   console.log(`Checking calendars for changes (${dateRange.start.toISOString()} to ${dateRange.end.toISOString()})`);
+
+  // Track which calendars posted to which channels
+  const channelCalendars = new Map(); // channelId -> Set of calendar names
 
   // Process each calendar
   for (const calId of Object.keys(config.calendars)) {
@@ -165,8 +178,16 @@ async function runChangeDetection(config, dryRun) {
       // Add calendar name to diffs
       const diffsWithCalendar = diffs.map(d => ({ ...d, calendarName: calendar.name }));
 
-      // Route to channels
-      await routeChangeDetectionDiffs(config, calId, diffsWithCalendar, dryRun);
+      // Route to channels and collect which channels got messages
+      const channelCalendarMap = await routeChangeDetectionDiffs(config, calId, diffsWithCalendar, dryRun);
+
+      // Track calendars per channel
+      for (const [channelId, calendarName] of channelCalendarMap) {
+        if (!channelCalendars.has(channelId)) {
+          channelCalendars.set(channelId, new Set());
+        }
+        channelCalendars.get(channelId).add(calendarName);
+      }
 
       // Update cache (clear any previous error state)
       await saveCacheState(calId, currentEvents, null, cacheDir);
@@ -194,6 +215,15 @@ async function runChangeDetection(config, dryRun) {
       }
 
       // Continue with other calendars
+    }
+  }
+
+  // Post calendar legends for channels that had changes from multiple calendars
+  for (const [channelId, calendars] of channelCalendars) {
+    if (calendars.size > 1) {
+      const legend = renderCalendarLegend(Array.from(calendars).sort());
+      console.log(`Posting calendar legend to channel ${channelId} (${calendars.size} calendars)`);
+      await postMessage(channelId, legend, dryRun);
     }
   }
 

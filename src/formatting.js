@@ -359,11 +359,6 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC') {
       break;
   }
 
-  // Add calendar legend with proper separation
-  if (indicator && calendarName) {
-    message += `\n\n_${indicator} ${calendarName}_`;
-  }
-
   return message;
 }
 
@@ -511,17 +506,6 @@ function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UTC') {
     }
   }
 
-  // Add calendar legend with proper separation
-  if (calendarIndicators.size > 0) {
-    output += '\n\n_';
-    const legendItems = [];
-    for (const [calName, indicator] of calendarIndicators) {
-      legendItems.push(`${indicator} ${calName}`);
-    }
-    output += legendItems.join('  ');
-    output += '_';
-  }
-
   return output.trim();
 }
 
@@ -658,11 +642,32 @@ function renderCanvasContent(events, options = {}) {
   return renderWeekView(weekEvents, dateRange, locale, options);
 }
 
+/**
+ * Render calendar legend showing which color corresponds to which calendar
+ * @param {Array} calendarNames - Array of calendar names
+ * @returns {string} Formatted legend
+ */
+function renderCalendarLegend(calendarNames) {
+  if (!calendarNames || calendarNames.length === 0) {
+    return '';
+  }
+
+  const legendItems = [];
+  for (const calName of calendarNames) {
+    const index = hashCalendarName(calName);
+    const indicator = CALENDAR_INDICATORS[index];
+    legendItems.push(`${indicator} ${calName}`);
+  }
+
+  return `_${legendItems.join('  ')}_`;
+}
+
 module.exports = {
   formatEventTime,
   renderWeekView,
   renderChangeNotification,
   renderBundledNotification,
   renderDailyView,
-  renderCanvasContent
+  renderCanvasContent,
+  renderCalendarLegend
 };

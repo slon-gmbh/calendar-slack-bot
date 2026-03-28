@@ -6,7 +6,8 @@ const {
   renderChangeNotification,
   renderBundledNotification,
   renderCanvasContent,
-  formatEventTime
+  formatEventTime,
+  renderCalendarLegend
 } = require('../src/formatting.js');
 
 test('formatEventTime should format time based on locale', () => {
@@ -97,11 +98,10 @@ test('renderChangeNotification should format new events', () => {
   assert.match(result, /Neuer Termin:/);
   assert.match(result, /New Meeting/);
 
-  // Should include color indicator and legend
+  // Should include color indicator (legend is now posted separately)
   const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
   const hasIndicator = indicators.some(ind => result.includes(ind));
   assert.ok(hasIndicator, 'Should show color indicator');
-  assert.match(result, /Team/, 'Should include calendar name in legend');
 });
 
 test('renderChangeNotification should format cancelled events', () => {
@@ -257,9 +257,6 @@ test('renderBundledNotification should show color indicators for single calendar
             result.includes('🟧') || result.includes('🟪') || result.includes('🟥') || result.includes('⬜'),
             'Should show color indicator');
   assert.ok(!result.includes('· Team'), 'Should not show text calendar name');
-
-  // Should include legend showing which color corresponds to which calendar
-  assert.match(result, /Team/, 'Should include calendar name in legend');
 });
 
 test('renderBundledNotification should assign consistent colors to same calendar', () => {
@@ -311,10 +308,29 @@ test('renderBundledNotification should assign consistent colors to same calendar
 
   assert.ok(resultBoth.includes(teamColor), 'Team should keep same color in multi-calendar message');
   assert.ok(resultBoth.includes(vorstandColor), 'Vorstand should keep same color in multi-calendar message');
+});
 
-  // Legend should show both calendars
-  assert.match(resultBoth, /Team/, 'Legend should include Team calendar');
-  assert.match(resultBoth, /Vorstand/, 'Legend should include Vorstand calendar');
+test('renderCalendarLegend should render legend with color indicators', () => {
+  const calendars = ['Team', 'Vorstand', 'Abeona-Termine'];
+  const legend = renderCalendarLegend(calendars);
+
+  // Should be wrapped in italics
+  assert.match(legend, /^_.*_$/, 'Legend should be wrapped in italics');
+
+  // Should include all calendar names
+  assert.match(legend, /Team/, 'Should include Team');
+  assert.match(legend, /Vorstand/, 'Should include Vorstand');
+  assert.match(legend, /Abeona-Termine/, 'Should include Abeona-Termine');
+
+  // Should include color indicators
+  const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+  const hasIndicators = indicators.some(ind => legend.includes(ind));
+  assert.ok(hasIndicators, 'Should include color indicators');
+});
+
+test('renderCalendarLegend should return empty string for empty input', () => {
+  assert.equal(renderCalendarLegend([]), '');
+  assert.equal(renderCalendarLegend(null), '');
 });
 
 test('renderChangeNotification should show both old and new dates when date changes (same time)', () => {
