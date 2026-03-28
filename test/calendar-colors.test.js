@@ -287,3 +287,28 @@ test('getCalendarColor should fall back to hash if all else fails', async () => 
   assert.ok(result.emoji);
   assert.equal(result.source, 'hash');
 });
+
+test('getCalendarColor should preserve source from cache', async () => {
+  const config = {
+    calendars: {
+      'test-cal': {
+        name: 'Test Calendar',
+        caldav_url: 'https://example.com/cal/'
+      }
+    },
+    caldav_credentials: { username: 'user', password: 'pass' }
+  };
+
+  const cache = {
+    color: {
+      hex: '#ff0000',
+      emoji: '🟥',
+      source: 'config'
+    }
+  };
+
+  const result = await getCalendarColor('test-cal', config, cache);
+  assert.equal(result.emoji, '🟥');
+  assert.equal(result.source, 'config');
+  assert.equal(result.hex, '#ff0000');
+});

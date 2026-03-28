@@ -239,7 +239,7 @@ async function getCalendarColor(calendarId, config, cache) {
 
   const cachedEmoji = loadColorFromCache(cache);
   if (cachedEmoji) {
-    return { emoji: cachedEmoji, source: 'caldav', hex: cache.color.hex };
+    return { emoji: cachedEmoji, source: cache.color.source, hex: cache.color.hex };
   }
 
   const caldavUrl = calendarConfig.caldav_url;
@@ -273,5 +273,7 @@ module.exports = {
   fetchColorFromCalDAV,
   loadColorFromCache,
   createColorCacheObject,
-  getCalendarColor
+  getCalendarColor,
+  CALENDAR_INDICATORS,
+  hashCalendarName
 };

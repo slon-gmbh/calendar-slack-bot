@@ -2,10 +2,7 @@
  * Formatting and rendering module for digest messages and Canvas content
  */
 
-/**
- * Calendar color indicators for multi-calendar channels
- */
-const CALENDAR_INDICATORS = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+const { CALENDAR_INDICATORS, hashCalendarName } = require('./calendar-colors');
 
 /**
  * Locale-specific translations
@@ -64,20 +61,6 @@ function getTranslation(locale, key) {
   return lang[key] || TRANSLATIONS['en-US'][key];
 }
 
-/**
- * Hash calendar name to consistent indicator index
- * Ensures same calendar always gets same color across all messages
- * @param {string} calendarName - Calendar name
- * @returns {number} Index in CALENDAR_INDICATORS array
- */
-function hashCalendarName(calendarName) {
-  let hash = 0;
-  for (let i = 0; i < calendarName.length; i++) {
-    hash = ((hash << 5) - hash) + calendarName.charCodeAt(i);
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash) % CALENDAR_INDICATORS.length;
-}
 
 /**
  * Assign color indicators to calendars
