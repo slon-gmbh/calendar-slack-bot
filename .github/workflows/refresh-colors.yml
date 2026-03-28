@@ -1,0 +1,114 @@
+name: Refresh Calendar Colors
+
+on:
+  workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: 'Clear entire cache (forces full re-fetch)'
+        required: false
+        default: false
+        type: boolean
+      run_digest:
+        description: 'Run digest after refresh to fetch colors immediately'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  refresh-colors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to access cache-state branch
+
+      - name: Clear color cache
+        run: |
+          # Check if cache-state branch exists
+          if git ls-remote --heads origin cache-state | grep cache-state; then
+            echo "✓ cache-state branch exists"
+            git fetch origin cache-state:cache-state
+            git checkout cache-state
+
+            if [ "${{ inputs.clear_cache }}" = "true" ]; then
+              echo "Clearing entire cache (will force full re-fetch)"
+              rm -f *.json
+              echo "Deleted all cache files"
+            else
+              echo "Removing color fields from cache files"
+              # Remove color field from each JSON file
+              for file in *.json; do
+                if [ -f "$file" ]; then
+                  echo "Processing $file"
+                  # Use node to safely remove color field from JSON
+                  node -e "
+                    const fs = require('fs');
+                    const data = JSON.parse(fs.readFileSync('$file', 'utf8'));
+                    delete data.color;
+                    fs.writeFileSync('$file', JSON.stringify(data, null, 2) + '\n');
+                  "
+                fi
+              done
+              echo "Removed color fields from cache"
+            fi
+
+            # Commit changes
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            if git diff --quiet; then
+              echo "No changes to commit (cache was already empty)"
+            else
+              git add -A
+              git commit -m "chore: clear calendar colors for refresh"
+              git push origin cache-state
+              echo "✓ Cache cleared and pushed"
+            fi
+
+            git checkout main
+          else
+            echo "⚠ cache-state branch does not exist yet (first run)"
+            echo "Colors will be fetched on next bot run"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: inputs.run_digest == true
+        with:
+          node-version: '20'
+
+      - name: Write config
+        if: inputs.run_digest == true
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: printf '%s' "$CONFIG_JSON" > config.json
+
+      - name: Install dependencies
+        if: inputs.run_digest == true
+        run: npm ci
+
+      - name: Run digest to fetch colors
+        if: inputs.run_digest == true
+        env:
+          CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          echo "Running scheduled digest to fetch fresh colors..."
+          node src/bot.js --scheduled --dry-run
+          echo "✓ Colors fetched from CalDAV"
+
+      - name: Summary
+        run: |
+          echo "## Color Refresh Complete! 🎨" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.clear_cache }}" = "true" ]; then
+            echo "- ✓ Entire cache cleared" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ✓ Color fields removed from cache" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ inputs.run_digest }}" = "true" ]; then
+            echo "- ✓ Fresh colors fetched from CalDAV" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⏳ Colors will be fetched on next scheduled run" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Next digest will use the updated colors from Nextcloud." >> $GITHUB_STEP_SUMMARY
