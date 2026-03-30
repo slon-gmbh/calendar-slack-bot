@@ -642,3 +642,42 @@ test('renderDailyView shows inline calendar color indicators', async () => {
 
   assert.ok(hasIndicator, 'Team Event should have color indicator inline');
 });
+
+test('renderWeekView uses 12-character HR separator', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-30T23:59:59Z')
+  };
+
+  const result = await renderWeekView(events, dateRange, 'en-US', {});
+
+  // Should have exactly 12-char separator
+  assert.ok(result.includes('────────────\n'), 'Should use 12-character light horizontal line separator');
+  assert.ok(!result.includes('━━━━━━━━━━━━━━━━━━━━'), 'Should not use 20-character heavy horizontal line');
+});
+
+test('renderDailyView uses 12-character HR separator', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-25T23:59:59Z')
+  };
+
+  const result = await renderDailyView(events, dateRange, 'en-US', {});
+
+  assert.ok(result.includes('────────────\n'), 'Should use 12-character light horizontal line separator');
+  assert.ok(!result.includes('━━━━━━━━━━━━━━━━━━━━'), 'Should not use 20-character heavy horizontal line');
+});

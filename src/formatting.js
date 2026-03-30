@@ -234,7 +234,7 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
     }
 
     output += `*${dayName}*\n`;
-    output += `━━━━━━━━━━━━━━━━━━━━\n`;
+    output += `────────────\n`;
 
     if (dayEvents.length === 0) {
       output += `${getTranslation(locale, 'nothingScheduled')}\n\n`;
@@ -600,7 +600,7 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
     }
 
     output += `*${label} · ${dayName}*\n`;
-    output += `━━━━━━━━━━━━━━━━━━━━\n`;
+    output += `────────────\n`;
 
     if (dayEvents.length === 0) {
       output += `${getTranslation(locale, 'nothingScheduled')}\n\n`;
