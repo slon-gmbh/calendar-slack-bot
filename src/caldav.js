@@ -37,8 +37,33 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
       // Handle recurring events
       if (event.rrule) {
         const instances = event.rrule.between(dateRange.start, dateRange.end, true);
+
         for (const instance of instances) {
+          // Get date string for comparison (YYYY-MM-DD)
+          const instanceDateStr = instance.toISOString().substring(0, 10);
+
+          // Skip if this instance is in EXDATE (deleted occurrence)
+          if (event.exdate && event.exdate[instanceDateStr]) {
+            continue;
+          }
+
+          // Skip if this instance has a RECURRENCE-ID override (modified occurrence)
+          if (event.recurrences && event.recurrences[instanceDateStr]) {
+            continue;
+          }
+
           normalized.push(normalizeEvent(event, instance, timezone));
+        }
+
+        // Add modified occurrences from RECURRENCE-ID
+        if (event.recurrences) {
+          for (const [dateStr, recurrence] of Object.entries(event.recurrences)) {
+            // Only add if within date range
+            const recStart = recurrence.start instanceof Date ? recurrence.start : new Date(recurrence.start);
+            if (recStart >= dateRange.start && recStart <= dateRange.end) {
+              normalized.push(normalizeEvent(recurrence, null, timezone));
+            }
+          }
         }
       } else {
         // Single event
@@ -161,17 +186,6 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   // Store rrule string for recurring events
   if (icalEvent.rrule) {
     normalized.rrule = icalEvent.rrule.toString();
-  }
-
-  // Debug logging
-  console.log(`[DEBUG] Event: ${normalized.title}`);
-  console.log(`  Raw start:`, start);
-  console.log(`  Raw start tz property:`, start?.tz);
-  console.log(`  Normalized start:`, normalized.start);
-  console.log(`  ISO string:`, normalized.start.toISOString());
-  console.log(`  isAllDay:`, normalized.isAllDay);
-  if (normalized.rrule) {
-    console.log(`  rrule:`, normalized.rrule);
   }
 
   return normalized;
