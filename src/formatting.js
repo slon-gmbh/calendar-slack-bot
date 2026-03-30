@@ -270,7 +270,14 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
     const calendarLabel = uniqueCalendars === 1 ? getTranslation(locale, 'calendar') : getTranslation(locale, 'calendars');
     output += ` · ${uniqueCalendars} ${calendarLabel}`;
   }
-  output += ` · ${getTranslation(locale, 'fullSchedule')}`;
+
+  // Add clickable link if canvas_url provided
+  const fullScheduleText = getTranslation(locale, 'fullSchedule');
+  if (options.canvas_url) {
+    output += ` · <${options.canvas_url}|${fullScheduleText}>`;
+  } else {
+    output += ` · ${fullScheduleText}`;
+  }
 
   // Add calendar legend if multiple calendars (in italics)
   if (calendarIndicators.size > 0) {
@@ -636,7 +643,14 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
     const calendarLabel = uniqueCalendars === 1 ? getTranslation(locale, 'calendar') : getTranslation(locale, 'calendars');
     output += ` · ${uniqueCalendars} ${calendarLabel}`;
   }
-  output += ` · ${getTranslation(locale, 'fullSchedule')}`;
+
+  // Add clickable link if canvas_url provided
+  const fullScheduleText = getTranslation(locale, 'fullSchedule');
+  if (options.canvas_url) {
+    output += ` · <${options.canvas_url}|${fullScheduleText}>`;
+  } else {
+    output += ` · ${fullScheduleText}`;
+  }
 
   // Add calendar legend if multiple calendars (in italics)
   if (calendarIndicators.size > 0) {

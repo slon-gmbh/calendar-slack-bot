@@ -440,8 +440,8 @@ async function postDigestForChannel(config, channel, type, dryRun) {
 
   const cacheMap = await buildCacheMap(config);
   const digest = type === 'daily'
-    ? await renderDailyView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap })
-    : await renderWeekView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap });
+    ? await renderDailyView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap, canvas_url: channel.canvas_url })
+    : await renderWeekView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap, canvas_url: channel.canvas_url });
   await postMessage(channel.id, digest, dryRun);
 
   // Update Canvas (always full week)

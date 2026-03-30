@@ -681,3 +681,61 @@ test('renderDailyView uses 12-character HR separator', async () => {
   assert.ok(result.includes('────────────\n'), 'Should use 12-character light horizontal line separator');
   assert.ok(!result.includes('━━━━━━━━━━━━━━━━━━━━'), 'Should not use 20-character heavy horizontal line');
 });
+
+test('renderWeekView creates clickable Canvas link when canvas_url provided', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-30T23:59:59Z')
+  };
+
+  const canvas_url = 'https://workspace.slack.com/docs/T123/F456';
+  const result = await renderWeekView(events, dateRange, 'en-US', { canvas_url });
+
+  // Should have Slack link syntax
+  assert.ok(result.includes(`<${canvas_url}|Full schedule →>`), 'Should have clickable Canvas link');
+});
+
+test('renderWeekView shows plain text when canvas_url missing', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-30T23:59:59Z')
+  };
+
+  const result = await renderWeekView(events, dateRange, 'en-US', {});
+
+  assert.ok(result.includes('Full schedule →'), 'Should have plain text');
+  assert.ok(!result.includes('<http'), 'Should not have link syntax');
+});
+
+test('renderDailyView creates clickable Canvas link when canvas_url provided', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-25T23:59:59Z')
+  };
+
+  const canvas_url = 'https://workspace.slack.com/docs/T123/F456';
+  const result = await renderDailyView(events, dateRange, 'de-DE', { canvas_url });
+
+  assert.ok(result.includes(`<${canvas_url}|Komplette Übersicht →>`), 'Should have clickable Canvas link with German text');
+});
