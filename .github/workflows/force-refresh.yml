@@ -1,0 +1,55 @@
+name: Force Cache Refresh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Need write access to push to cache-state branch
+
+jobs:
+  force-refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to access cache-state branch
+
+      - name: Clear cache
+        run: |
+          # Check if cache-state branch exists
+          if git ls-remote --heads origin cache-state | grep cache-state; then
+            echo "✓ cache-state branch exists"
+            git fetch origin cache-state:cache-state
+            git checkout cache-state
+
+            echo "Clearing entire cache (forces full re-fetch of all events)"
+            rm -f *.json
+            echo "Deleted all cache files"
+
+            # Commit changes
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            if git diff --quiet; then
+              echo "No changes to commit (cache was already empty)"
+            else
+              git add -A
+              git commit -m "chore: force cache refresh"
+              git push origin cache-state
+              echo "✓ Cache cleared and pushed"
+            fi
+
+            git checkout main
+          else
+            echo "⚠ cache-state branch does not exist yet (first run)"
+            echo "Cache will be created on next bot run"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Cache Refresh Complete! 🔄" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ Entire cache cleared" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏳ Events will be re-fetched on next scheduled run" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The next digest will fetch fresh events from all calendars." >> $GITHUB_STEP_SUMMARY
