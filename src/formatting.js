@@ -667,19 +667,33 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
 }
 
 /**
- * Convert Slack mrkdwn format to standard markdown for Canvas
- * @param {string} mrkdwn - Slack mrkdwn formatted text
- * @returns {string} Standard markdown
+ * Convert Slack mrkdwn to Canvas markdown format
+ * Canvas uses:
+ * - **bold** (double asterisk, not single)
+ * - _italic_ (underscore)
+ * - [text](url) for links (standard markdown, not <url|text>)
+ * - \n\n for line breaks (double newline)
+ * @param {string} text - Text with Slack mrkdwn formatting
+ * @returns {string} Text formatted for Canvas
  */
-function convertMrkdwnToMarkdown(mrkdwn) {
+function convertToCanvasMarkdown(text) {
+  let result = text;
+
   // Convert Slack link format <url|text> to markdown [text](url)
   // Handles both <url|text> and <url||text> (pipe variations)
-  let markdown = mrkdwn.replace(/<([^>|]+)\|+([^>]+)>/g, '[$2]($1)');
+  result = result.replace(/<([^>|]+)\|+([^>]+)>/g, '[$2]($1)');
 
   // Convert standalone links <url> to [url](url)
-  markdown = markdown.replace(/<(https?:\/\/[^>]+)>/g, '[$1]($1)');
+  result = result.replace(/<(https?:\/\/[^>]+)>/g, '[$1]($1)');
 
-  return markdown;
+  // Convert Slack bold *text* to Canvas bold **text**
+  // Must avoid converting *text* that's part of other patterns
+  result = result.replace(/\*([^*\n]+)\*/g, '**$1**');
+
+  // Convert single newlines to double newlines for Canvas line breaks
+  result = result.replace(/\n(?!\n)/g, '\n\n');
+
+  return result;
 }
 
 /**
@@ -729,14 +743,15 @@ async function renderCanvasContent(events, options = {}) {
   content = content.replace(` · ${fullScheduleEnglish}`, '');
   content = content.replace(` · ${fullScheduleGerman}`, '');
 
-  // Add Nextcloud link if configured
+  // Add Nextcloud link if configured (in markdown format)
   if (options.config?.nextcloud_url) {
     const linkText = locale === 'de-DE' ? 'In Nextcloud ansehen →' : 'View in Nextcloud →';
     content += `\n\n[${linkText}](${options.config.nextcloud_url})`;
   }
 
-  // Convert Slack mrkdwn to standard markdown for Canvas
-  content = convertMrkdwnToMarkdown(content);
+  // Convert Slack mrkdwn to Canvas markdown format
+  // This handles: links, bold formatting, and line breaks
+  content = convertToCanvasMarkdown(content);
 
   return content;
 }
