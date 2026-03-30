@@ -657,6 +657,21 @@ test('formatEventTime returns translated all-day text instead of emoji', () => {
   assert.ok(!resultEN.includes('📅'), 'Should not contain emoji');
 });
 
+test('formatEventTime shows end date for multi-day all-day events', () => {
+  // Event from March 29 to April 2 (4 days)
+  const multiDayEvent = {
+    start: new Date('2026-03-29T00:00:00Z'),
+    end: new Date('2026-04-02T23:59:59Z'),
+    isAllDay: true
+  };
+
+  const en = formatEventTime(multiDayEvent, 'en-US', 'UTC');
+  const de = formatEventTime(multiDayEvent, 'de-DE', 'UTC');
+
+  assert.match(en, /All-day.*until.*Apr.*2/i, 'English should show "All-day (until Apr 2)"');
+  assert.match(de, /Ganztägig.*bis.*02\.04\./i, 'German should show "Ganztägig (bis 02.04.)"');
+});
+
 test('renderWeekView removes calendar emoji from footer', async () => {
   const events = [{
     title: 'Test Event',

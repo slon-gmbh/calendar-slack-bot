@@ -110,7 +110,39 @@ async function assignCalendarIndicators(events, config, cacheMap) {
  */
 function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
   if (event.isAllDay) {
-    return getTranslation(locale, 'allDay');
+    const allDayText = getTranslation(locale, 'allDay');
+
+    // Check if event spans multiple days
+    if (event.end) {
+      const startDate = new Date(event.start);
+      const endDate = new Date(event.end);
+
+      // Normalize to start of day for comparison (UTC)
+      const startDay = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate());
+      const endDay = Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate());
+
+      // Calculate day difference
+      const dayDiff = Math.floor((endDay - startDay) / (1000 * 60 * 60 * 24));
+
+      // If spans more than 1 day, show end date
+      if (dayDiff > 0) {
+        // Format: German: "02.04." / English: "Apr 2"
+        const endDateFormat = new Intl.DateTimeFormat(locale, {
+          day: locale === 'de-DE' ? '2-digit' : 'numeric',
+          month: locale === 'de-DE' ? '2-digit' : 'short',
+          timeZone: timezone
+        });
+        let formattedEndDate = endDateFormat.format(endDate);
+        // Add trailing period for German format
+        if (locale === 'de-DE') {
+          formattedEndDate += '.';
+        }
+        const untilText = locale === 'de-DE' ? 'bis' : 'until';
+        return `${allDayText} (${untilText} ${formattedEndDate})`;
+      }
+    }
+
+    return allDayText;
   }
 
   const timeFormat = new Intl.DateTimeFormat(locale, {
