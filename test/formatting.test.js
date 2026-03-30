@@ -235,6 +235,57 @@ test('renderCanvasContent should filter to current week', async () => {
   assert.ok(!result.includes('Next Week Event'), 'Should not include next week events');
 });
 
+test('renderCanvasContent adds Nextcloud link when nextcloud_url provided', async () => {
+  const now = new Date();
+  const events = [{
+    title: 'Test Event',
+    start: now,
+    end: now,
+    isAllDay: false
+  }];
+
+  const config = {
+    nextcloud_url: 'https://nextcloud.example.com/apps/calendar'
+  };
+
+  const result = await renderCanvasContent(events, { locale: 'en-US', config, cacheMap: new Map() });
+
+  assert.ok(result.includes('<https://nextcloud.example.com/apps/calendar|View in Nextcloud →>'), 'Should have Nextcloud link');
+});
+
+test('renderCanvasContent works without nextcloud_url', async () => {
+  const now = new Date();
+  const events = [{
+    title: 'Test Event',
+    start: now,
+    end: now,
+    isAllDay: false
+  }];
+
+  const result = await renderCanvasContent(events, { locale: 'en-US', config: {}, cacheMap: new Map() });
+
+  assert.ok(!result.includes('Nextcloud'), 'Should not have Nextcloud text');
+  assert.ok(result.includes('Test Event'), 'Should have event content');
+});
+
+test('renderCanvasContent uses German text for de-DE locale', async () => {
+  const now = new Date();
+  const events = [{
+    title: 'Test Event',
+    start: now,
+    end: now,
+    isAllDay: false
+  }];
+
+  const config = {
+    nextcloud_url: 'https://nextcloud.example.com/apps/calendar'
+  };
+
+  const result = await renderCanvasContent(events, { locale: 'de-DE', config, cacheMap: new Map() });
+
+  assert.ok(result.includes('In Nextcloud ansehen →'), 'Should have German Nextcloud link text');
+});
+
 test('renderBundledNotification should show color indicators for single calendar', async () => {
   // Issue #8: Change notifications should show color indicators instead of text names
   const diffs = [

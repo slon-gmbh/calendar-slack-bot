@@ -694,7 +694,15 @@ async function renderCanvasContent(events, options = {}) {
     return eventDate >= dateRange.start && eventDate <= dateRange.end;
   });
 
-  return await renderWeekView(weekEvents, dateRange, locale, options);
+  let content = await renderWeekView(weekEvents, dateRange, locale, options);
+
+  // Add Nextcloud link if configured
+  if (options.config?.nextcloud_url) {
+    const linkText = locale === 'de-DE' ? 'In Nextcloud ansehen →' : 'View in Nextcloud →';
+    content += `\n\n<${options.config.nextcloud_url}|${linkText}>`;
+  }
+
+  return content;
 }
 
 /**
