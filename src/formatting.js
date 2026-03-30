@@ -250,8 +250,9 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
 
     for (const event of sorted) {
       const time = formatEventTime(event, locale, timezone);
-      // Don't show emoji indicators in digest, just calendar name if present
-      const calendar = event.calendarName ? ` · ${event.calendarName}` : '';
+      // Restore inline color indicators
+      const indicator = calendarIndicators.get(event.calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (event.calendarName ? ` · ${event.calendarName}` : '');
       const location = eventDetail !== 'minimal' && event.location ? ` — ${event.location}` : '';
 
       output += `${time}${!event.isAllDay ? '  ' : ' '}${event.title}${location}${calendar}\n`;
@@ -615,8 +616,9 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
 
     for (const event of sorted) {
       const time = formatEventTime(event, locale, timezone);
-      // Don't show emoji indicators in digest, just calendar name if present
-      const calendar = event.calendarName ? ` · ${event.calendarName}` : '';
+      // Restore inline color indicators
+      const indicator = calendarIndicators.get(event.calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (event.calendarName ? ` · ${event.calendarName}` : '');
       const location = eventDetail !== 'minimal' && event.location ? ` — ${event.location}` : '';
 
       output += `${time}${!event.isAllDay ? '  ' : ' '}${event.title}${location}${calendar}\n`;

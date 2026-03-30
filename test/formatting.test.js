@@ -574,3 +574,71 @@ test('renderDailyView removes calendar emoji from footer', async () => {
   assert.ok(!result.includes('📆'), 'Should not contain calendar emoji in footer');
   assert.match(result, /1 event/, 'Should contain event count');
 });
+
+test('renderWeekView shows inline calendar color indicators', async () => {
+  const events = [
+    {
+      title: 'Team Event',
+      start: new Date('2026-03-24T10:00:00Z'),
+      end: new Date('2026-03-24T11:00:00Z'),
+      isAllDay: false,
+      calendarName: 'Team Calendar'
+    },
+    {
+      title: 'Project Event',
+      start: new Date('2026-03-24T14:00:00Z'),
+      end: new Date('2026-03-24T15:00:00Z'),
+      isAllDay: false,
+      calendarName: 'Project X'
+    }
+  ];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-30T23:59:59Z')
+  };
+
+  const config = {
+    calendars: {
+      'team-calendar': { name: 'Team Calendar' },
+      'project-x': { name: 'Project X' }
+    }
+  };
+
+  const result = await renderWeekView(events, dateRange, 'en-US', { config });
+
+  const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+  const hasTeamIndicator = indicators.some(ind => result.includes(`Team Event ${ind}`));
+  const hasProjectIndicator = indicators.some(ind => result.includes(`Project Event ${ind}`));
+
+  assert.ok(hasTeamIndicator, 'Team Event should have color indicator inline');
+  assert.ok(hasProjectIndicator, 'Project Event should have color indicator inline');
+});
+
+test('renderDailyView shows inline calendar color indicators', async () => {
+  const events = [{
+    title: 'Team Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false,
+    calendarName: 'Team Calendar'
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-25T23:59:59Z')
+  };
+
+  const config = {
+    calendars: {
+      'team-calendar': { name: 'Team Calendar' }
+    }
+  };
+
+  const result = await renderDailyView(events, dateRange, 'en-US', { config });
+
+  const indicators = ['🟦', '🟩', '🟨', '🟧', '🟪', '🟥', '⬜'];
+  const hasIndicator = indicators.some(ind => result.includes(`Team Event ${ind}`));
+
+  assert.ok(hasIndicator, 'Team Event should have color indicator inline');
+});
