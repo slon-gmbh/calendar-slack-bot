@@ -2,16 +2,11 @@ name: Scheduled Digests
 
 on:
   schedule:
-    # IMPORTANT: Configure these cron schedules to match your channel digest_schedule settings
-    #
-    # Example configurations:
-    # - If you have "sunday 18:00" in config.json, use: - cron: '0 18 * * 0'
-    # - If you have "weekdays 08:00" in config.json, use: - cron: '0 8 * * 1-5'
-    # - If you have "daily 09:00" in config.json, use: - cron: '0 9 * * *'
-    #
-    # Uncomment and adjust these examples to match your config.json channel settings:
-    # - cron: '0 18 * * 0'  # Sunday 18:00 UTC
-    # - cron: '0 8 * * 1-5'  # Weekdays 08:00 UTC
+    # Configure cron schedules to match your channel digest_schedule settings in config.json
+    # Example: "sunday 18:00" → use: - cron: '0 18 * * 0'
+    # Example: "weekdays 08:00" → use: - cron: '0 8 * * 1-5'
+    - cron: '0 18 * * 0'  # Sunday 18:00 UTC (weekly digest)
+    - cron: '0 8 * * 1-5'  # Weekdays 08:00 UTC (daily digest)
   workflow_dispatch:
     inputs:
       digest_type:
