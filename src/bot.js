@@ -451,13 +451,21 @@ async function postDigestForChannel(config, channel, type, dryRun) {
 
 /**
  * Get current week date range (Monday - Sunday)
+ * @param {Date} now - Optional date to use as "now" (for testing)
  * @returns {Object} Object with start and end Date objects
  */
-function getCurrentWeekRange() {
-  const now = new Date();
-  const dayOfWeek = now.getUTCDay();
+function getCurrentWeekRange(now = new Date()) {
+  const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   const startOfWeek = new Date(now);
-  startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+
+  if (dayOfWeek === 0) {
+    // Sunday: show upcoming week (tomorrow's Monday through next Sunday)
+    startOfWeek.setUTCDate(now.getUTCDate() + 1);
+  } else {
+    // Monday-Saturday: show current week (this Monday through this Sunday)
+    startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + 1);
+  }
+
   startOfWeek.setUTCHours(0, 0, 0, 0);
 
   const endOfWeek = new Date(startOfWeek);
@@ -741,12 +749,14 @@ async function runDailyDigest(config, dryRun, forceAll) {
 if (process.env.NODE_ENV === 'test') {
   module.exports = {
     getChangeDetectionRange,
+    getCurrentWeekRange,
     loadLastRunTime,
     saveLastRunTime
   };
 } else {
   module.exports = {
-    getChangeDetectionRange
+    getChangeDetectionRange,
+    getCurrentWeekRange
   };
 }
 
