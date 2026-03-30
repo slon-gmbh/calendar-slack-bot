@@ -518,3 +518,59 @@ test('renderChangeNotification should infer all-day status from midnight when fl
   // Should NOT show confusing midnight time
   assert.ok(!result.match(/01:00\s*→/), 'Should not show "01:00 →"');
 });
+
+test('formatEventTime returns translated all-day text instead of emoji', () => {
+  const allDayEvent = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-24T23:59:59Z'),
+    isAllDay: true
+  };
+
+  const resultDE = formatEventTime(allDayEvent, 'de-DE', 'UTC');
+  assert.equal(resultDE, 'Ganztägig', 'Should return German all-day translation');
+  assert.ok(!resultDE.includes('📅'), 'Should not contain emoji');
+
+  const resultEN = formatEventTime(allDayEvent, 'en-US', 'UTC');
+  assert.equal(resultEN, 'All-day', 'Should return English all-day translation');
+  assert.ok(!resultEN.includes('📅'), 'Should not contain emoji');
+});
+
+test('renderWeekView removes calendar emoji from footer', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-25T10:00:00Z'),
+    end: new Date('2026-03-25T11:00:00Z'),
+    isAllDay: false,
+    calendarName: 'Team'
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-30T23:59:59Z')
+  };
+
+  const result = await renderWeekView(events, dateRange, 'en-US', { config: {}, cacheMap: new Map() });
+
+  assert.ok(!result.includes('📆'), 'Should not contain calendar emoji in footer');
+  assert.match(result, /1 event/, 'Should contain event count');
+});
+
+test('renderDailyView removes calendar emoji from footer', async () => {
+  const events = [{
+    title: 'Test Event',
+    start: new Date('2026-03-24T10:00:00Z'),
+    end: new Date('2026-03-24T11:00:00Z'),
+    isAllDay: false,
+    calendarName: 'Team'
+  }];
+
+  const dateRange = {
+    start: new Date('2026-03-24T00:00:00Z'),
+    end: new Date('2026-03-25T23:59:59Z')
+  };
+
+  const result = await renderDailyView(events, dateRange, 'en-US', { config: {}, cacheMap: new Map() });
+
+  assert.ok(!result.includes('📆'), 'Should not contain calendar emoji in footer');
+  assert.match(result, /1 event/, 'Should contain event count');
+});

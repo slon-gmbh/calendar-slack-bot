@@ -110,7 +110,7 @@ async function assignCalendarIndicators(events, config, cacheMap) {
  */
 function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
   if (event.isAllDay) {
-    return '📅';
+    return getTranslation(locale, 'allDay');
   }
 
   const timeFormat = new Intl.DateTimeFormat(locale, {
@@ -264,7 +264,7 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
   const totalEvents = events.length;
   const uniqueCalendars = new Set(events.map(e => e.calendarName).filter(Boolean)).size;
   const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
-  output += `📆 ${totalEvents} ${eventLabel}`;
+  output += `${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {
     const calendarLabel = uniqueCalendars === 1 ? getTranslation(locale, 'calendar') : getTranslation(locale, 'calendars');
     output += ` · ${uniqueCalendars} ${calendarLabel}`;
@@ -629,7 +629,7 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
   const totalEvents = events.length;
   const uniqueCalendars = new Set(events.map(e => e.calendarName).filter(Boolean)).size;
   const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
-  output += `📆 ${totalEvents} ${eventLabel}`;
+  output += `${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {
     const calendarLabel = uniqueCalendars === 1 ? getTranslation(locale, 'calendar') : getTranslation(locale, 'calendars');
     output += ` · ${uniqueCalendars} ${calendarLabel}`;
