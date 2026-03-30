@@ -286,6 +286,53 @@ test('renderCanvasContent uses German text for de-DE locale', async () => {
   assert.ok(result.includes('In Nextcloud ansehen →'), 'Should have German Nextcloud link text');
 });
 
+test('renderCanvasContent shows upcoming week when rendered on Sunday', async () => {
+  // Create mock function to override getCurrentWeekRange behavior
+  const originalGetCurrentWeekRange = Date.prototype.getUTCDay;
+
+  // Events: one on Sunday March 22, one on Monday March 23
+  const events = [
+    {
+      title: 'Sunday Event (current week)',
+      start: new Date('2026-03-22T10:00:00Z'), // Sunday March 22
+      end: new Date('2026-03-22T11:00:00Z'),
+      isAllDay: false
+    },
+    {
+      title: 'Monday Event (next week)',
+      start: new Date('2026-03-23T10:00:00Z'), // Monday March 23
+      end: new Date('2026-03-23T11:00:00Z'),
+      isAllDay: false
+    }
+  ];
+
+  // Mock current date to Sunday March 22, 2026
+  const OriginalDate = global.Date;
+  global.Date = class extends OriginalDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        super('2026-03-22T12:00:00Z'); // Sunday
+      } else {
+        super(...args);
+      }
+    }
+    static now() {
+      return new OriginalDate('2026-03-22T12:00:00Z').getTime();
+    }
+  };
+
+  try {
+    const result = await renderCanvasContent(events, { locale: 'en-US', config: {}, cacheMap: new Map() });
+
+    // Should include Monday event (next week from Sunday's perspective)
+    assert.ok(result.includes('Monday Event (next week)'), 'Should include next week Monday event');
+    // Should NOT include Sunday event (end of previous week from Sunday's perspective)
+    assert.ok(!result.includes('Sunday Event (current week)'), 'Should not include current Sunday event');
+  } finally {
+    global.Date = OriginalDate;
+  }
+});
+
 test('renderBundledNotification should show color indicators for single calendar', async () => {
   // Issue #8: Change notifications should show color indicators instead of text names
   const diffs = [

@@ -675,15 +675,23 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
 async function renderCanvasContent(events, options = {}) {
   const { locale = 'en-US' } = options;
 
-  // Get current week range
+  // Get current/upcoming week range (same logic as getCurrentWeekRange)
   const now = new Date();
-  const dayOfWeek = now.getUTCDay();
+  const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   const startOfWeek = new Date(now);
-  startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Monday
+
+  if (dayOfWeek === 0) {
+    // Sunday: show upcoming week (tomorrow's Monday through next Sunday)
+    startOfWeek.setUTCDate(now.getUTCDate() + 1);
+  } else {
+    // Monday-Saturday: show current week (this Monday through this Sunday)
+    startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + 1);
+  }
+
   startOfWeek.setUTCHours(0, 0, 0, 0);
 
   const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6); // Sunday
+  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
   endOfWeek.setUTCHours(23, 59, 59, 999);
 
   const dateRange = { start: startOfWeek, end: endOfWeek };
