@@ -28,6 +28,9 @@ async function loadConfig(configPath = './config.json') {
  */
 function validateConfig(config) {
   // Check required top-level fields
+  if (!config.workspace_id || typeof config.workspace_id !== 'string') {
+    throw new Error('workspace_id is required and must be a string');
+  }
   if (!config.locale) {
     throw new Error('Config error: missing required field "locale"');
   }
@@ -42,6 +45,15 @@ function validateConfig(config) {
   }
   if (!Array.isArray(config.channels)) {
     throw new Error('Config error: "channels" must be an array');
+  }
+
+  // Validate nextcloud_url (optional)
+  if (config.nextcloud_url) {
+    try {
+      new URL(config.nextcloud_url);
+    } catch (error) {
+      throw new Error('nextcloud_url must be a valid URL');
+    }
   }
 
   // Resolve environment variables in config
@@ -75,6 +87,15 @@ function validateConfig(config) {
         throw new Error(
           `Config error: channel '${channel.id}' references calendar '${calId}' which is not defined in calendars`
         );
+      }
+    }
+
+    // Validate canvas_url (optional)
+    if (channel.canvas_url) {
+      try {
+        new URL(channel.canvas_url);
+      } catch (error) {
+        throw new Error(`canvas_url for channel ${channel.id} must be a valid URL`);
       }
     }
 

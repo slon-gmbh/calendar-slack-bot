@@ -1,4 +1,5 @@
 {
+  "workspace_id": "T123TEST",
   "locale": "en-US",
   "caldav_credentials": {
     "username": "testuser",

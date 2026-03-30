@@ -1,5 +1,7 @@
 {
   "_comment": "Optional fields in calendars: (1) 'color' - Override calendar color with hex format (e.g., '#0082c9'). If not specified, color is fetched from CalDAV or defaults to hash-based assignment. (2) 'caldav_metadata_url' - Separate CalDAV URL for color fetching via PROPFIND. Use this if your caldav_url is a public share link (which works for event fetching but not metadata). If not specified, caldav_url is used for both events and metadata.",
+  "workspace_id": "T01234WORK",
+  "nextcloud_url": "https://nextcloud.example.com/apps/calendar",
   "locale": "en-US",
   "timezone": "UTC",
   "error_channel": "C01234ERROR",
@@ -24,6 +26,7 @@
       "id": "C01234TEAM",
       "name": "#team-schedule",
       "canvas_id": "F9876CANVAS",
+      "canvas_url": "https://workspace.slack.com/docs/T01234WORK/F9876CANVAS",
       "calendars": ["team-calendar", "project-x"],
       "locale": "de-DE",
       "timezone": "Europe/Berlin",
