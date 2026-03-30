@@ -1,5 +1,5 @@
 {
-  "_comment": "Optional 'color' field in calendars: Override calendar color with hex format (e.g., '#0082c9'). If not specified, color is fetched from CalDAV or defaults to hash-based assignment.",
+  "_comment": "Optional fields in calendars: (1) 'color' - Override calendar color with hex format (e.g., '#0082c9'). If not specified, color is fetched from CalDAV or defaults to hash-based assignment. (2) 'caldav_metadata_url' - Separate CalDAV URL for color fetching via PROPFIND. Use this if your caldav_url is a public share link (which works for event fetching but not metadata). If not specified, caldav_url is used for both events and metadata.",
   "locale": "en-US",
   "timezone": "UTC",
   "error_channel": "C01234ERROR",
@@ -10,7 +10,8 @@
   "calendars": {
     "team-calendar": {
       "name": "Team Calendar",
-      "caldav_url": "https://nextcloud.example.com/remote.php/dav/calendars/user/team/",
+      "caldav_url": "https://nextcloud.example.com/apps/calendar/p/SHAREID",
+      "caldav_metadata_url": "https://nextcloud.example.com/remote.php/dav/calendars/user/team/",
       "color": "#0082c9"
     },
     "project-x": {

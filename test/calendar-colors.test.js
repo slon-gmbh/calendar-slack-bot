@@ -312,3 +312,94 @@ test('getCalendarColor should preserve source from cache', async () => {
   assert.equal(result.source, 'config');
   assert.equal(result.hex, '#ff0000');
 });
+
+test('getCalendarColor should use caldav_metadata_url when available', async () => {
+  const mockResponse = `<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:apple="http://apple.com/ns/ical/">
+  <d:response>
+    <d:propstat>
+      <d:prop>
+        <apple:calendar-color>#0082c9</apple:calendar-color>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>`;
+
+  const originalFetch = global.fetch;
+  let fetchedUrl = null;
+
+  global.fetch = async (url, options) => {
+    fetchedUrl = url;
+    return {
+      ok: true,
+      text: async () => mockResponse
+    };
+  };
+
+  const config = {
+    calendars: {
+      'test-cal': {
+        name: 'Test Calendar',
+        caldav_url: 'https://example.com/apps/calendar/p/SHAREID',
+        caldav_metadata_url: 'https://example.com/remote.php/dav/calendars/user/cal/'
+      }
+    },
+    caldav_credentials: { username: 'user', password: 'pass' }
+  };
+
+  const cache = null;
+
+  const result = await getCalendarColor('test-cal', config, cache);
+
+  global.fetch = originalFetch;
+
+  assert.equal(fetchedUrl, 'https://example.com/remote.php/dav/calendars/user/cal/');
+  assert.equal(result.emoji, '🟦');
+  assert.equal(result.source, 'caldav');
+  assert.equal(result.hex, '#0082c9');
+});
+
+test('getCalendarColor should fall back to caldav_url when caldav_metadata_url not present', async () => {
+  const mockResponse = `<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:apple="http://apple.com/ns/ical/">
+  <d:response>
+    <d:propstat>
+      <d:prop>
+        <apple:calendar-color>#ff0000</apple:calendar-color>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>`;
+
+  const originalFetch = global.fetch;
+  let fetchedUrl = null;
+
+  global.fetch = async (url, options) => {
+    fetchedUrl = url;
+    return {
+      ok: true,
+      text: async () => mockResponse
+    };
+  };
+
+  const config = {
+    calendars: {
+      'test-cal': {
+        name: 'Test Calendar',
+        caldav_url: 'https://example.com/remote.php/dav/calendars/user/cal/'
+      }
+    },
+    caldav_credentials: { username: 'user', password: 'pass' }
+  };
+
+  const cache = null;
+
+  const result = await getCalendarColor('test-cal', config, cache);
+
+  global.fetch = originalFetch;
+
+  assert.equal(fetchedUrl, 'https://example.com/remote.php/dav/calendars/user/cal/');
+  assert.equal(result.emoji, '🟥');
+  assert.equal(result.source, 'caldav');
+  assert.equal(result.hex, '#ff0000');
+});

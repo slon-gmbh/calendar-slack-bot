@@ -242,7 +242,7 @@ async function getCalendarColor(calendarId, config, cache) {
     return { emoji: cachedEmoji, source: cache.color.source, hex: cache.color.hex };
   }
 
-  const caldavUrl = calendarConfig.caldav_url;
+  const caldavUrl = calendarConfig.caldav_metadata_url || calendarConfig.caldav_url;
   const credentials = config.caldav_credentials;
 
   if (caldavUrl && credentials) {
