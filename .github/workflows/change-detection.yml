@@ -2,9 +2,9 @@ name: Change Detection
 
 on:
   schedule:
-    # Every 2 hours from 6 AM to 6 PM UTC (7 runs per day)
+    # Every 2 hours between 06:00 and 18:00 UTC (7 runs per day)
     # Avoids running during off-hours while maintaining frequent updates when needed
-    - cron: '0 6,8,10,12,14,16,18 * * *'
+    - cron: '0 6-18/2 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
