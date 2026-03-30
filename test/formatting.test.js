@@ -658,10 +658,10 @@ test('formatEventTime returns translated all-day text instead of emoji', () => {
 });
 
 test('formatEventTime shows end date for multi-day all-day events', () => {
-  // Event from March 29 to April 2 (4 days)
+  // Event from March 29 to April 2 (iCal format: end is April 3 00:00 exclusive)
   const multiDayEvent = {
     start: new Date('2026-03-29T00:00:00Z'),
-    end: new Date('2026-04-02T23:59:59Z'),
+    end: new Date('2026-04-03T00:00:00Z'), // Exclusive end date
     isAllDay: true
   };
 
@@ -670,6 +670,21 @@ test('formatEventTime shows end date for multi-day all-day events', () => {
 
   assert.match(en, /All-day.*until.*Apr.*2/i, 'English should show "All-day (until Apr 2)"');
   assert.match(de, /Ganztägig.*bis.*02\.04\./i, 'German should show "Ganztägig (bis 02.04.)"');
+});
+
+test('formatEventTime does not show end date for single-day all-day events', () => {
+  // Single-day event on March 29 (iCal format: end is March 30 00:00 exclusive)
+  const singleDayEvent = {
+    start: new Date('2026-03-29T00:00:00Z'),
+    end: new Date('2026-03-30T00:00:00Z'), // Exclusive end date
+    isAllDay: true
+  };
+
+  const en = formatEventTime(singleDayEvent, 'en-US', 'UTC');
+  const de = formatEventTime(singleDayEvent, 'de-DE', 'UTC');
+
+  assert.strictEqual(en, 'All-day', 'English should show only "All-day" for single-day events');
+  assert.strictEqual(de, 'Ganztägig', 'German should show only "Ganztägig" for single-day events');
 });
 
 test('renderWeekView removes calendar emoji from footer', async () => {

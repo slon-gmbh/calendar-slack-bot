@@ -125,14 +125,19 @@ function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
       const dayDiff = Math.floor((endDay - startDay) / (1000 * 60 * 60 * 24));
 
       // If spans more than 1 day, show end date
-      if (dayDiff > 0) {
+      // Note: iCal end dates are exclusive, so dayDiff=1 means single-day event
+      if (dayDiff > 1) {
+        // iCal end date is exclusive, so subtract 1 day to get the actual last day
+        const actualEndDate = new Date(endDate);
+        actualEndDate.setDate(actualEndDate.getDate() - 1);
+
         // Format: German: "02.04." / English: "Apr 2"
         const endDateFormat = new Intl.DateTimeFormat(locale, {
           day: locale === 'de-DE' ? '2-digit' : 'numeric',
           month: locale === 'de-DE' ? '2-digit' : 'short',
           timeZone: timezone
         });
-        let formattedEndDate = endDateFormat.format(endDate);
+        let formattedEndDate = endDateFormat.format(actualEndDate);
         // Add trailing period for German format
         if (locale === 'de-DE') {
           formattedEndDate += '.';
