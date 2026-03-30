@@ -16,6 +16,7 @@ on:
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
+    if: github.repository != 'slon-gmbh/calendar-slack-bot'
     permissions:
       contents: write  # Allow creating and pushing to cache-state branch
     steps:

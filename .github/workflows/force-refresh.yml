@@ -9,6 +9,7 @@ permissions:
 jobs:
   force-refresh:
     runs-on: ubuntu-latest
+    if: github.repository != 'slon-gmbh/calendar-slack-bot'
     steps:
       - uses: actions/checkout@v4
         with:

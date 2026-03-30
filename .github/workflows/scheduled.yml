@@ -20,6 +20,7 @@ on:
 jobs:
   digest:
     runs-on: ubuntu-latest
+    if: github.repository != 'slon-gmbh/calendar-slack-bot'
     permissions:
       contents: write  # Allow pushing to cache-state branch
     steps:
