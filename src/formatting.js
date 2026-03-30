@@ -690,6 +690,10 @@ function convertToCanvasMarkdown(text) {
   // Must avoid converting *text* that's part of other patterns
   result = result.replace(/\*([^*\n]+)\*/g, '**$1**');
 
+  // Convert Slack italic _text_ to Canvas italic *text*
+  // Remove trailing spaces before closing underscore
+  result = result.replace(/_([^_\n]+?)\s*_/g, '*$1*');
+
   // Convert single newlines to double newlines for Canvas line breaks
   result = result.replace(/\n(?!\n)/g, '\n\n');
 
