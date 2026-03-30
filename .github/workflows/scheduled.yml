@@ -20,6 +20,8 @@ on:
 jobs:
   digest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow pushing to cache-state branch
     steps:
       - uses: actions/checkout@v4
 
@@ -38,18 +40,58 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Setup cache branch for state tracking
+        run: |
+          # Fetch cache-state branch or create if missing
+          if git fetch origin cache-state 2>/dev/null; then
+            echo "Cache branch exists"
+          else
+            echo "Creating cache-state orphan branch"
+            git checkout --orphan cache-state
+            git rm -rf . --quiet
+            git commit --allow-empty -m "chore: initialize cache-state branch"
+            git push origin cache-state
+            git checkout main
+          fi
+
+          # Use git worktree to work with cache branch alongside main
+          # Clean up any stale worktree from previous failed runs
+          git worktree remove /tmp/cache-state 2>/dev/null || true
+          git worktree add /tmp/cache-state cache-state
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Run scheduled digests
         if: github.event_name == 'schedule'
         env:
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CACHE_DIR: /tmp/cache-state
         run: node src/bot.js --scheduled
+
+      - name: Commit digest run state
+        if: github.event_name == 'schedule'
+        run: |
+          cd /tmp/cache-state
+          git add .lastrun-*.json 2>/dev/null || true
+
+          # Check if there are staged changes
+          if git diff --staged --quiet; then
+            echo "No state changes to commit"
+          else
+            git commit -m "chore: update digest run timestamps $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin cache-state
+          fi
 
       - name: Run manual digest
         if: github.event_name == 'workflow_dispatch'
         env:
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CACHE_DIR: /tmp/cache-state
         run: |
           DRY_RUN=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then

@@ -6,6 +6,10 @@
 const URGENT_THRESHOLD_HOURS = 24;
 const DEBOUNCE_WINDOW_SECONDS = 300; // 5 minutes
 
+// State tracking thresholds
+const DAILY_DIGEST_THRESHOLD_HOURS = 20;
+const WEEKLY_DIGEST_THRESHOLD_DAYS = 7;
+
 /**
  * Check if current time matches a schedule
  * @param {string} schedule - e.g., "monday 14:00", "weekdays 08:00"
@@ -162,7 +166,7 @@ function hasRunToday(lastRunTime) {
   const now = new Date();
   const hoursSinceLastRun = (now - lastRun) / (1000 * 60 * 60);
 
-  return hoursSinceLastRun < 20;
+  return hoursSinceLastRun < DAILY_DIGEST_THRESHOLD_HOURS;
 }
 
 /**
@@ -182,7 +186,7 @@ function hasRunThisWeek(lastRunTime) {
   const now = new Date();
   const daysSinceLastRun = (now - lastRun) / (1000 * 60 * 60 * 24);
 
-  return daysSinceLastRun < 7;
+  return daysSinceLastRun < WEEKLY_DIGEST_THRESHOLD_DAYS;
 }
 
 /**
