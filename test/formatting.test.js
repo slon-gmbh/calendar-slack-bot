@@ -250,7 +250,7 @@ test('renderCanvasContent adds Nextcloud link when nextcloud_url provided', asyn
 
   const result = await renderCanvasContent(events, { locale: 'en-US', config, cacheMap: new Map() });
 
-  assert.ok(result.includes('<https://nextcloud.example.com/apps/calendar|View in Nextcloud →>'), 'Should have Nextcloud link');
+  assert.ok(result.includes('[View in Nextcloud →](https://nextcloud.example.com/apps/calendar)'), 'Should have Nextcloud link in markdown format');
 });
 
 test('renderCanvasContent works without nextcloud_url', async () => {
@@ -283,7 +283,31 @@ test('renderCanvasContent uses German text for de-DE locale', async () => {
 
   const result = await renderCanvasContent(events, { locale: 'de-DE', config, cacheMap: new Map() });
 
-  assert.ok(result.includes('In Nextcloud ansehen →'), 'Should have German Nextcloud link text');
+  assert.ok(result.includes('[In Nextcloud ansehen →](https://nextcloud.example.com/apps/calendar)'), 'Should have German Nextcloud link in markdown format');
+});
+
+test('renderCanvasContent does not include canvas_url link (redundant)', async () => {
+  const now = new Date();
+  const events = [{
+    title: 'Test Event',
+    start: now,
+    end: now,
+    isAllDay: false
+  }];
+
+  const canvasUrl = 'https://abeona.slack.com/docs/T31PV0E2E/F0AP5AJLFRAJK';
+  const result = await renderCanvasContent(events, {
+    locale: 'en-US',
+    config: {},
+    cacheMap: new Map(),
+    canvas_url: canvasUrl
+  });
+
+  // Canvas should NOT include a link to itself
+  assert.ok(!result.includes('Komplette Übersicht →'), 'Canvas should not include German canvas link text');
+  assert.ok(!result.includes('Full schedule →'), 'Canvas should not include English canvas link text');
+  // Should not contain any Slack mrkdwn angle bracket links
+  assert.ok(!result.match(/<https?:\/\/[^>]+\|[^>]+>/), 'Should not contain any mrkdwn format links');
 });
 
 test('renderCanvasContent shows upcoming week when rendered on Sunday', async () => {

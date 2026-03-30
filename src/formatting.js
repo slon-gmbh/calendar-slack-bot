@@ -667,6 +667,22 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
 }
 
 /**
+ * Convert Slack mrkdwn format to standard markdown for Canvas
+ * @param {string} mrkdwn - Slack mrkdwn formatted text
+ * @returns {string} Standard markdown
+ */
+function convertMrkdwnToMarkdown(mrkdwn) {
+  // Convert Slack link format <url|text> to markdown [text](url)
+  // Handles both <url|text> and <url||text> (pipe variations)
+  let markdown = mrkdwn.replace(/<([^>|]+)\|+([^>]+)>/g, '[$2]($1)');
+
+  // Convert standalone links <url> to [url](url)
+  markdown = markdown.replace(/<(https?:\/\/[^>]+)>/g, '[$1]($1)');
+
+  return markdown;
+}
+
+/**
  * Render Canvas content (markdown format)
  * @param {Array} events - Array of event objects
  * @param {Object} options - Rendering options
@@ -702,13 +718,25 @@ async function renderCanvasContent(events, options = {}) {
     return eventDate >= dateRange.start && eventDate <= dateRange.end;
   });
 
-  let content = await renderWeekView(weekEvents, dateRange, locale, options);
+  // Render week view without canvas_url (redundant on the Canvas itself)
+  const optionsWithoutCanvasUrl = { ...options };
+  delete optionsWithoutCanvasUrl.canvas_url;
+  let content = await renderWeekView(weekEvents, dateRange, locale, optionsWithoutCanvasUrl);
+
+  // Remove "Full schedule →" / "Komplette Übersicht →" text from Canvas (redundant)
+  const fullScheduleEnglish = getTranslation('en-US', 'fullSchedule');
+  const fullScheduleGerman = getTranslation('de-DE', 'fullSchedule');
+  content = content.replace(` · ${fullScheduleEnglish}`, '');
+  content = content.replace(` · ${fullScheduleGerman}`, '');
 
   // Add Nextcloud link if configured
   if (options.config?.nextcloud_url) {
     const linkText = locale === 'de-DE' ? 'In Nextcloud ansehen →' : 'View in Nextcloud →';
-    content += `\n\n<${options.config.nextcloud_url}|${linkText}>`;
+    content += `\n\n[${linkText}](${options.config.nextcloud_url})`;
   }
+
+  // Convert Slack mrkdwn to standard markdown for Canvas
+  content = convertMrkdwnToMarkdown(content);
 
   return content;
 }
