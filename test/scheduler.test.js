@@ -3,7 +3,10 @@ const assert = require('node:assert');
 const {
   matchesSchedule,
   classifyUrgency,
-  shouldNotifyNow
+  shouldNotifyNow,
+  hasRunToday,
+  hasRunThisWeek,
+  isDailySchedule
 } = require('../src/scheduler.js');
 
 test('matchesSchedule should match within ±30 min tolerance', () => {
@@ -93,4 +96,83 @@ test('shouldNotifyNow should respect notifications setting', () => {
   assert.ok(!shouldNotifyNow(diff, disabledConfig));
   assert.ok(!shouldNotifyNow(diff, weeklyConfig));
   assert.ok(shouldNotifyNow(diff, allConfig));
+});
+
+test('hasRunToday should return false if no last run', () => {
+  const result = hasRunToday(null);
+  assert.equal(result, false);
+});
+
+test('hasRunToday should return true if run within last 20 hours', () => {
+  const lastRun = new Date(Date.now() - 19 * 60 * 60 * 1000);
+  const result = hasRunToday(lastRun);
+  assert.equal(result, true);
+});
+
+test('hasRunToday should return false if run more than 20 hours ago', () => {
+  const lastRun = new Date(Date.now() - 21 * 60 * 60 * 1000);
+  const result = hasRunToday(lastRun);
+  assert.equal(result, false);
+});
+
+test('hasRunThisWeek should return false if no last run', () => {
+  const result = hasRunThisWeek(null);
+  assert.equal(result, false);
+});
+
+test('hasRunThisWeek should return true if run within last 6 days', () => {
+  const lastRun = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const result = hasRunThisWeek(lastRun);
+  assert.equal(result, true);
+});
+
+test('hasRunThisWeek should return false if run more than 6 days ago', () => {
+  const lastRun = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const result = hasRunThisWeek(lastRun);
+  assert.equal(result, false);
+});
+
+test('hasRunThisWeek should use 7-day threshold', () => {
+  const lastRun = new Date(Date.now() - 6.5 * 24 * 60 * 60 * 1000); // 6.5 days ago
+  const result = hasRunThisWeek(lastRun);
+  assert.equal(result, true); // Should still be true since < 7 days
+});
+
+test('hasRunToday should handle invalid date strings', () => {
+  const result = hasRunToday('invalid-date-string');
+  assert.equal(result, false);
+});
+
+test('hasRunThisWeek should handle invalid date strings', () => {
+  const result = hasRunThisWeek('invalid-date-string');
+  assert.equal(result, false);
+});
+
+test('isDailySchedule should return true for daily schedule', () => {
+  assert.equal(isDailySchedule('daily'), true);
+});
+
+test('isDailySchedule should return true for weekdays schedule', () => {
+  assert.equal(isDailySchedule('weekdays'), true);
+});
+
+test('isDailySchedule should return false for weekly schedule', () => {
+  assert.equal(isDailySchedule('sunday 18:00'), false);
+});
+
+test('isDailySchedule should return false for null/false', () => {
+  assert.equal(isDailySchedule(null), false);
+  assert.equal(isDailySchedule(false), false);
+});
+
+test('isDailySchedule should return true for weekday cron', () => {
+  assert.equal(isDailySchedule('0 8 * * 1-5'), true);
+});
+
+test('isDailySchedule should return true for daily cron', () => {
+  assert.equal(isDailySchedule('0 8 * * *'), true);
+});
+
+test('isDailySchedule should return false for single-day cron', () => {
+  assert.equal(isDailySchedule('0 18 * * 0'), false); // Sunday only
 });

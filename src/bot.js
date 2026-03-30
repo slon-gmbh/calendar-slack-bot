@@ -302,25 +302,101 @@ async function main() {
 }
 
 /**
+ * Load last run timestamp for a channel digest
+ * @param {string} channelId - Channel ID
+ * @param {string} digestType - 'weekly' or 'daily'
+ * @returns {Promise<Date|null>} Last run timestamp or null
+ */
+async function loadLastRunTime(channelId, digestType) {
+  const cacheDir = process.env.CACHE_DIR || '.';
+  const { readFile } = require('node:fs/promises');
+  const path = require('node:path');
+
+  try {
+    const filePath = path.join(cacheDir, `.lastrun-${channelId}-${digestType}.json`);
+    const content = await readFile(filePath, 'utf-8');
+    const data = JSON.parse(content);
+    return data.lastRun ? new Date(data.lastRun) : null;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null; // File doesn't exist yet
+    }
+    console.warn(`Failed to load last run time for ${channelId}/${digestType}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Save last run timestamp for a channel digest
+ * @param {string} channelId - Channel ID
+ * @param {string} digestType - 'weekly' or 'daily'
+ * @param {Date} timestamp - Run timestamp
+ * @returns {Promise<void>}
+ */
+async function saveLastRunTime(channelId, digestType, timestamp) {
+  const cacheDir = process.env.CACHE_DIR || '.';
+  const { writeFile, mkdir } = require('node:fs/promises');
+  const path = require('node:path');
+
+  try {
+    // Ensure cache directory exists
+    await mkdir(cacheDir, { recursive: true });
+
+    const filePath = path.join(cacheDir, `.lastrun-${channelId}-${digestType}.json`);
+    const data = { lastRun: timestamp.toISOString() };
+    await writeFile(filePath, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.warn(`Failed to save last run time for ${channelId}/${digestType}:`, error.message);
+  }
+}
+
+/**
  * Run scheduled digest checks for all channels
  * @param {Object} config - Bot configuration
  * @param {boolean} dryRun - Dry run mode flag
  * @returns {Promise<void>}
  */
 async function runScheduledDigests(config, dryRun) {
+  const { hasRunToday, hasRunThisWeek } = require('./scheduler.js');
   const now = new Date();
 
   for (const channel of config.channels) {
     // Check weekly digest
     if (channel.digest_schedule && matchesSchedule(channel.digest_schedule, now, channel.locale || config.locale)) {
-      console.log(`Weekly digest match for channel ${channel.id}`);
+      console.log(`Weekly digest schedule match for channel ${channel.id}`);
+
+      // Check if already run this week
+      const lastRun = await loadLastRunTime(channel.id, 'weekly');
+      if (hasRunThisWeek(lastRun)) {
+        console.log(`Weekly digest already posted this week for channel ${channel.id}, skipping`);
+        continue;
+      }
+
       await postDigestForChannel(config, channel, 'weekly', dryRun);
+
+      // Save run timestamp
+      if (!dryRun) {
+        await saveLastRunTime(channel.id, 'weekly', now);
+      }
     }
 
     // Check daily digest
     if (channel.daily_digest_schedule && matchesSchedule(channel.daily_digest_schedule, now, channel.locale || config.locale)) {
-      console.log(`Daily digest match for channel ${channel.id}`);
+      console.log(`Daily digest schedule match for channel ${channel.id}`);
+
+      // Check if already run today
+      const lastRun = await loadLastRunTime(channel.id, 'daily');
+      if (hasRunToday(lastRun)) {
+        console.log(`Daily digest already posted today for channel ${channel.id}, skipping`);
+        continue;
+      }
+
       await postDigestForChannel(config, channel, 'daily', dryRun);
+
+      // Save run timestamp
+      if (!dryRun) {
+        await saveLastRunTime(channel.id, 'daily', now);
+      }
     }
   }
 }
@@ -661,9 +737,18 @@ async function runDailyDigest(config, dryRun, forceAll) {
   }
 }
 
-module.exports = {
-  getChangeDetectionRange
-};
+// Export for testing
+if (process.env.NODE_ENV === 'test') {
+  module.exports = {
+    getChangeDetectionRange,
+    loadLastRunTime,
+    saveLastRunTime
+  };
+} else {
+  module.exports = {
+    getChangeDetectionRange
+  };
+}
 
 if (require.main === module) {
   main();

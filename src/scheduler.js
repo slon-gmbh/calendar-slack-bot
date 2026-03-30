@@ -6,6 +6,10 @@
 const URGENT_THRESHOLD_HOURS = 24;
 const DEBOUNCE_WINDOW_SECONDS = 300; // 5 minutes
 
+// State tracking thresholds
+const DAILY_DIGEST_THRESHOLD_HOURS = 20;
+const WEEKLY_DIGEST_THRESHOLD_DAYS = 7;
+
 /**
  * Check if current time matches a schedule
  * @param {string} schedule - e.g., "monday 14:00", "weekdays 08:00"
@@ -145,8 +149,81 @@ function shouldNotifyNow(diff, channelConfig) {
   return true;
 }
 
+/**
+ * Check if digest has run today (within last 20 hours)
+ * @param {Date|string|null} lastRunTime - Last run timestamp
+ * @returns {boolean} True if run within last 20 hours
+ */
+function hasRunToday(lastRunTime) {
+  if (!lastRunTime) return false;
+
+  const lastRun = new Date(lastRunTime);
+  if (isNaN(lastRun.getTime())) {
+    console.warn(`Invalid lastRunTime provided to hasRunToday: ${lastRunTime}`);
+    return false;
+  }
+
+  const now = new Date();
+  const hoursSinceLastRun = (now - lastRun) / (1000 * 60 * 60);
+
+  return hoursSinceLastRun < DAILY_DIGEST_THRESHOLD_HOURS;
+}
+
+/**
+ * Check if digest has run this week (within last 7 days)
+ * @param {Date|string|null} lastRunTime - Last run timestamp
+ * @returns {boolean} True if run within last 7 days
+ */
+function hasRunThisWeek(lastRunTime) {
+  if (!lastRunTime) return false;
+
+  const lastRun = new Date(lastRunTime);
+  if (isNaN(lastRun.getTime())) {
+    console.warn(`Invalid lastRunTime provided to hasRunThisWeek: ${lastRunTime}`);
+    return false;
+  }
+
+  const now = new Date();
+  const daysSinceLastRun = (now - lastRun) / (1000 * 60 * 60 * 24);
+
+  return daysSinceLastRun < WEEKLY_DIGEST_THRESHOLD_DAYS;
+}
+
+/**
+ * Determine if schedule is daily vs weekly
+ * @param {string} schedule - Schedule string
+ * @returns {boolean} True if daily schedule
+ */
+function isDailySchedule(schedule) {
+  if (!schedule || schedule === false) return false;
+
+  const lowerSchedule = schedule.toLowerCase();
+
+  // Check for 'daily' or 'weekdays' keywords
+  if (lowerSchedule.includes('daily') || lowerSchedule.includes('weekdays')) {
+    return true;
+  }
+
+  // Check if it's a cron format for weekdays: "0 8 * * 1-5" or "0 8 * * *"
+  const cronMatch = schedule.match(/^(\d+)\s+(\d+)\s+\*\s+\*\s+([\d,\-*]+)$/);
+  if (cronMatch) {
+    const daysPart = cronMatch[3];
+    // If days is * or contains multiple days (like 1-5 or 1,2,3,4,5), consider it daily
+    if (daysPart === '*' || daysPart.includes('-') || daysPart.includes(',')) {
+      return true;
+    }
+    // Single day like "1" (Monday only) is weekly, not daily
+    return false;
+  }
+
+  return false;
+}
+
 module.exports = {
   matchesSchedule,
   classifyUrgency,
-  shouldNotifyNow
+  shouldNotifyNow,
+  hasRunToday,
+  hasRunThisWeek,
+  isDailySchedule
 };

@@ -1,5 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { mkdtemp, rm } = require('node:fs/promises');
+const { join } = require('node:path');
+const { tmpdir } = require('node:os');
 
 // We'll test the exported helper after extracting it
 const { getChangeDetectionRange } = require('../src/bot.js');
@@ -32,4 +35,36 @@ test('getChangeDetectionRange should handle Sunday correctly', () => {
 
   assert.strictEqual(result.start.toISOString(), expectedStart.toISOString());
   assert.strictEqual(result.end.toISOString(), expectedEnd.toISOString());
+});
+
+test('saveLastRunTime should create lastrun file', async () => {
+  const { loadLastRunTime, saveLastRunTime } = require('../src/bot.js');
+  const testDir = await mkdtemp(join(tmpdir(), 'bot-test-'));
+  process.env.CACHE_DIR = testDir;
+
+  try {
+    const timestamp = new Date('2026-03-30T18:00:00Z');
+    await saveLastRunTime('C12345', 'weekly', timestamp);
+
+    const loaded = await loadLastRunTime('C12345', 'weekly');
+    assert.ok(loaded);
+    assert.equal(loaded.toISOString(), timestamp.toISOString());
+  } finally {
+    delete process.env.CACHE_DIR;
+    await rm(testDir, { recursive: true, force: true });
+  }
+});
+
+test('loadLastRunTime should return null for nonexistent file', async () => {
+  const { loadLastRunTime } = require('../src/bot.js');
+  const testDir = await mkdtemp(join(tmpdir(), 'bot-test-'));
+  process.env.CACHE_DIR = testDir;
+
+  try {
+    const loaded = await loadLastRunTime('C99999', 'weekly');
+    assert.equal(loaded, null);
+  } finally {
+    delete process.env.CACHE_DIR;
+    await rm(testDir, { recursive: true, force: true });
+  }
 });
