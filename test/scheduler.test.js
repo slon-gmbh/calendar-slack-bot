@@ -176,3 +176,45 @@ test('isDailySchedule should return true for daily cron', () => {
 test('isDailySchedule should return false for single-day cron', () => {
   assert.equal(isDailySchedule('0 18 * * 0'), false); // Sunday only
 });
+
+test('classifyUrgency should check all instances for recurring event', () => {
+  const now = new Date('2026-04-01T12:00:00Z');
+
+  const event = {
+    id: 'recurring-123',
+    title: 'Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    instances: [
+      { start: new Date('2026-04-01T18:00:00Z'), end: new Date('2026-04-01T19:00:00Z'), isException: false },
+      { start: new Date('2026-04-07T18:00:00Z'), end: new Date('2026-04-07T19:00:00Z'), isException: false }
+    ]
+  };
+
+  const urgency = classifyUrgency(event, now);
+
+  assert.strictEqual(urgency, 'URGENT');
+});
+
+test('classifyUrgency should return THIS_WEEK if any instance in current week', () => {
+  const now = new Date('2026-04-01T12:00:00Z');
+
+  const event = {
+    id: 'recurring-456',
+    title: 'Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=FR',
+    instances: [
+      { start: new Date('2026-04-04T10:00:00Z'), end: new Date('2026-04-04T11:00:00Z'), isException: false },
+      { start: new Date('2026-04-11T10:00:00Z'), end: new Date('2026-04-11T11:00:00Z'), isException: false }
+    ]
+  };
+
+  const urgency = classifyUrgency(event, now);
+
+  assert.strictEqual(urgency, 'THIS_WEEK');
+});

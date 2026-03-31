@@ -93,28 +93,56 @@ function matchesDay(dayKeyword, currentDay) {
 
 /**
  * Classify event urgency
- * @param {Object} event - Event object with start date
- * @param {Object} channelConfig - Channel configuration
- * @returns {string} 'URGENT', 'THIS_WEEK', or 'FUTURE'
+ * @param {Object} event - Event object with start date and/or instances array
+ * @param {Date|Object} nowOrConfig - Current time or channelConfig for backwards compatibility
+ * @returns {string} 'URGENT', 'THIS_WEEK', or 'LATER'
  */
-function classifyUrgency(event, channelConfig) {
-  const now = new Date();
-  const eventStart = new Date(event.start);
-  const hoursUntil = (eventStart - now) / (1000 * 60 * 60);
+function classifyUrgency(event, nowOrConfig) {
+  let now;
 
-  // URGENT: within 24 hours
-  if (hoursUntil <= URGENT_THRESHOLD_HOURS) {
-    return 'URGENT';
+  // Handle backwards compatibility: detect if second parameter is channelConfig (object with config properties) or Date
+  if (nowOrConfig instanceof Date) {
+    now = nowOrConfig;
+  } else if (nowOrConfig && typeof nowOrConfig === 'object') {
+    // Backwards compatibility: treat as channelConfig, use current time
+    now = new Date();
+  } else {
+    now = new Date();
   }
 
-  // THIS_WEEK: within current calendar week
-  const endOfWeek = getEndOfCurrentWeek(now);
-  if (eventStart <= endOfWeek) {
-    return 'THIS_WEEK';
+  // Check if ANY instance falls within urgency windows
+  let instances = event.instances || [];
+
+  // Backwards compatibility: if no instances but event has start, create single instance
+  if (instances.length === 0 && event.start) {
+    instances = [{ start: event.start, end: event.end }];
   }
 
-  // FUTURE: beyond current week
-  return 'FUTURE';
+  for (const instance of instances) {
+    const start = new Date(instance.start);
+    const hoursDiff = (start - now) / (1000 * 60 * 60);
+
+    // Within 24 hours
+    if (hoursDiff >= 0 && hoursDiff <= URGENT_THRESHOLD_HOURS) {
+      return 'URGENT';
+    }
+
+    // Within current week (Monday 00:00 - Sunday 23:59)
+    const dayOfWeek = now.getUTCDay();
+    const startOfWeek = new Date(now);
+    startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+    startOfWeek.setUTCHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
+    endOfWeek.setUTCHours(23, 59, 59, 999);
+
+    if (start >= startOfWeek && start <= endOfWeek) {
+      return 'THIS_WEEK';
+    }
+  }
+
+  return 'LATER';
 }
 
 function getEndOfCurrentWeek(date) {
