@@ -30,13 +30,15 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
     const events = await ical.async.parseICS(icalData);
 
     // Normalize events
-    const normalized = [];
+    const eventMap = new Map(); // Track events by ID to build composite structure
+
     for (const [uid, event] of Object.entries(events)) {
       if (event.type !== 'VEVENT') continue;
 
       // Handle recurring events
       if (event.rrule) {
         const instances = event.rrule.between(dateRange.start, dateRange.end, true);
+        const eventInstances = [];
 
         for (const instance of instances) {
           // Get date string for comparison (YYYY-MM-DD)
@@ -52,7 +54,9 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
             continue;
           }
 
-          normalized.push(normalizeEvent(event, instance, timezone));
+          // Build instance object
+          const singleInstance = normalizeEvent(event, instance, timezone);
+          eventInstances.push(...singleInstance.instances);
         }
 
         // Add modified occurrences from RECURRENCE-ID
@@ -61,17 +65,33 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
             // Only add if within date range
             const recStart = recurrence.start instanceof Date ? recurrence.start : new Date(recurrence.start);
             if (recStart >= dateRange.start && recStart <= dateRange.end) {
-              normalized.push(normalizeEvent(recurrence, null, timezone));
+              const exceptionInstance = normalizeEvent(recurrence, null, timezone);
+              exceptionInstance.instances[0].isException = true;
+              eventInstances.push(...exceptionInstance.instances);
             }
           }
         }
+
+        // Build composite event
+        if (eventInstances.length > 0) {
+          eventMap.set(event.uid, {
+            id: event.uid,
+            title: event.summary || '(No title)',
+            location: event.location || null,
+            description: event.description || null,
+            isAllDay: event.datetype === 'date',
+            rrule: event.rrule.toString(),
+            instances: eventInstances
+          });
+        }
       } else {
         // Single event
-        normalized.push(normalizeEvent(event, null, timezone));
+        const singleEvent = normalizeEvent(event, null, timezone);
+        eventMap.set(event.uid, singleEvent);
       }
     }
 
-    return normalized;
+    return Array.from(eventMap.values());
   } catch (error) {
     console.error(`Failed to fetch calendar ${caldavUrl}:`, error.message);
     throw error;
@@ -173,24 +193,28 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
     throw new Error(`Invalid end date for event "${icalEvent.summary}": ${JSON.stringify(end)}`);
   }
 
+  // Build instance object
+  const instance = {
+    start: normalizedStart,
+    end: normalizedEnd,
+    isException: false
+  };
+
+  // Return composite structure
   const normalized = {
     id: icalEvent.uid,
     title: icalEvent.summary || '(No title)',
-    start: normalizedStart,
-    end: normalizedEnd,
     location: icalEvent.location || null,
     description: icalEvent.description || null,
-    isAllDay: isAllDay
+    isAllDay: isAllDay,
+    rrule: icalEvent.rrule ? icalEvent.rrule.toString() : null,
+    instances: [instance]
   };
-
-  // Store rrule string for recurring events
-  if (icalEvent.rrule) {
-    normalized.rrule = icalEvent.rrule.toString();
-  }
 
   return normalized;
 }
 
 module.exports = {
-  fetchCalendar
+  fetchCalendar,
+  normalizeEvent
 };
