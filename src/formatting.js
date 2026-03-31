@@ -56,6 +56,7 @@ function formatRecurrencePattern(rrule, locale = 'de-DE') {
   try {
     const parsed = parseRRule(rrule);
     if (!parsed || !parsed.FREQ) {
+      console.warn(`[RRULE] Failed to parse RRULE (no FREQ): "${rrule}"`);
       return 'Wiederholend'; // Fallback for invalid RRULE
     }
 
@@ -66,6 +67,8 @@ function formatRecurrencePattern(rrule, locale = 'de-DE') {
     const byMonth = parsed.BYMONTH;
     const count = parsed.COUNT;
     const until = parsed.UNTIL;
+
+    console.log(`[RRULE] Parsing: "${rrule}" → FREQ=${freq}, BYDAY=${byDay}, INTERVAL=${interval}`);
 
     // Day abbreviations mapping (de-DE)
     const dayMap = {
@@ -93,6 +96,7 @@ function formatRecurrencePattern(rrule, locale = 'de-DE') {
     } else if (freq === 'YEARLY') {
       base = interval === 1 ? 'Jährlich' : `Alle ${interval} Jahre`;
     } else {
+      console.warn(`[RRULE] Unsupported FREQ: "${freq}" in RRULE: "${rrule}"`);
       return 'Wiederholend';
     }
 
