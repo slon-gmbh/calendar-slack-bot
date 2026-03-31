@@ -224,6 +224,7 @@ async function runChangeDetection(config, dryRun) {
           channelCalendars.set(channelId, new Set());
         }
         channelCalendars.get(channelId).add(calendarName);
+        console.log(`[Legend Tracking] Added "${calendarName}" to channel ${channelId} (now has: ${Array.from(channelCalendars.get(channelId)).join(', ')})`);
       }
 
       // Update cache (clear any previous error state)
@@ -257,9 +258,10 @@ async function runChangeDetection(config, dryRun) {
 
   // Post calendar legends for channels that had changes from multiple calendars
   for (const [channelId, calendars] of channelCalendars) {
+    console.log(`[Legend] Channel ${channelId} has ${calendars.size} calendar(s): ${Array.from(calendars).join(', ')}`);
     if (calendars.size > 1) {
       const legend = renderCalendarLegend(Array.from(calendars).sort());
-      console.log(`Posting calendar legend to channel ${channelId} (${calendars.size} calendars)`);
+      console.log(`Posting calendar legend to channel ${channelId} (${calendars.size} calendars): ${legend}`);
       await postMessage(channelId, legend, dryRun, config.error_channel);
     }
   }
