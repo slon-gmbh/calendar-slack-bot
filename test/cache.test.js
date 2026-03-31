@@ -24,12 +24,15 @@ test('loadCacheState should load valid cache file', async () => {
 
   const result = await loadCacheState('team-calendar', TEST_CACHE_DIR);
 
-  // Dates should be converted to Date objects
+  // Old format events should be migrated to composite structure
   assert.strictEqual(result.events.length, 1);
   assert.strictEqual(result.events[0].id, 'e1');
   assert.strictEqual(result.events[0].title, 'Test Event');
-  assert.ok(result.events[0].start instanceof Date);
-  assert.strictEqual(result.events[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
+  // Migrated to composite structure with instances array
+  assert.ok(Array.isArray(result.events[0].instances));
+  assert.strictEqual(result.events[0].instances.length, 1);
+  assert.ok(result.events[0].instances[0].start instanceof Date);
+  assert.strictEqual(result.events[0].instances[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
   assert.strictEqual(result.updated_at, cacheData.updated_at);
 
   await rm(TEST_CACHE_DIR, { recursive: true, force: true });
@@ -72,8 +75,20 @@ test('loadCacheState should return null for corrupt JSON', async () => {
 test('saveCacheState should write valid JSON with events', async () => {
   await mkdir(TEST_CACHE_DIR, { recursive: true });
 
+  // Save events in new composite structure
   const events = [
-    { id: 'e1', title: 'Meeting', start: new Date('2026-03-26T10:00:00Z') }
+    {
+      id: 'e1',
+      title: 'Meeting',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [
+        { start: new Date('2026-03-26T10:00:00Z'), end: new Date('2026-03-26T11:00:00Z'), isException: false }
+      ],
+      calendarName: 'test-calendar'
+    }
   ];
 
   await saveCacheState('test-calendar', events, null, TEST_CACHE_DIR);
@@ -82,9 +97,11 @@ test('saveCacheState should write valid JSON with events', async () => {
 
   assert.strictEqual(saved.events[0].id, 'e1');
   assert.strictEqual(saved.events[0].title, 'Meeting');
-  // Dates are converted back to Date objects when loading
-  assert.ok(saved.events[0].start instanceof Date);
-  assert.strictEqual(saved.events[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
+  // Composite structure with instances array
+  assert.ok(Array.isArray(saved.events[0].instances));
+  assert.strictEqual(saved.events[0].instances.length, 1);
+  assert.ok(saved.events[0].instances[0].start instanceof Date);
+  assert.strictEqual(saved.events[0].instances[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
   assert.ok(saved.updated_at);
   assert.ok(!saved.last_error);
 

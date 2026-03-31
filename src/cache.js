@@ -25,9 +25,23 @@ async function loadCacheState(calendarId, cacheDir) {
     const content = await readFile(filePath, 'utf-8');
     const data = JSON.parse(content);
 
-    // Convert date strings back to Date objects
+    // Convert date strings back to Date objects and migrate to composite structure
     if (data && data.events) {
       data.events = data.events.map(event => {
+        // Check if this is new composite structure (has instances array)
+        if (event.instances && Array.isArray(event.instances)) {
+          // New format: convert instance dates
+          return {
+            ...event,
+            instances: event.instances.map(instance => ({
+              start: new Date(instance.start),
+              end: new Date(instance.end),
+              isException: instance.isException || false
+            }))
+          };
+        }
+
+        // Old format: migrate to composite structure
         const start = new Date(event.start);
 
         // Validate start date
@@ -44,10 +58,20 @@ async function loadCacheState(calendarId, cacheDir) {
           }
         }
 
+        // Migrate old format to composite structure
         return {
-          ...event,
-          start,
-          ...(end && { end })
+          id: event.id,
+          title: event.title,
+          location: event.location || null,
+          description: event.description || null,
+          isAllDay: event.isAllDay,
+          rrule: event.rrule || null,
+          instances: [{
+            start,
+            end: end || start,
+            isException: false
+          }],
+          calendarName: event.calendarName
         };
       });
     }
