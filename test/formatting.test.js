@@ -1029,3 +1029,65 @@ test('renderBundledNotification should collapse recurring events', async () => {
   // Should NOT show specific dates for recurring events
   assert.ok(!result.includes('03.'), 'Should not show specific date for recurring event');
 });
+
+test('renderWeekView should expand recurring event instances for display', async () => {
+  const events = [
+    {
+      id: 'recurring-123',
+      title: 'Daily Standup',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: 'FREQ=DAILY',
+      instances: [
+        { start: new Date('2026-03-31T09:00:00Z'), end: new Date('2026-03-31T09:15:00Z'), isException: false },
+        { start: new Date('2026-04-01T09:00:00Z'), end: new Date('2026-04-01T09:15:00Z'), isException: false },
+        { start: new Date('2026-04-02T09:00:00Z'), end: new Date('2026-04-02T09:15:00Z'), isException: false }
+      ],
+      calendarName: 'Team'
+    }
+  ];
+
+  const dateRange = {
+    start: new Date('2026-03-31T00:00:00Z'),
+    end: new Date('2026-04-06T23:59:59Z')
+  };
+
+  const result = await renderWeekView(events, dateRange, 'de-DE', {
+    timezone: 'UTC',
+    config: { calendars: {} },
+    cacheMap: new Map()
+  });
+
+  // Should show 3 separate entries (one per instance)
+  assert.strictEqual((result.match(/Daily Standup/g) || []).length, 3);
+});
+
+test('renderCanvasContent should expand recurring event instances', async () => {
+  const events = [
+    {
+      id: 'recurring-456',
+      title: 'Daily Standup',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: 'FREQ=DAILY',
+      instances: [
+        { start: new Date('2026-03-31T09:00:00Z'), end: new Date('2026-03-31T09:15:00Z'), isException: false },
+        { start: new Date('2026-04-01T09:00:00Z'), end: new Date('2026-04-01T09:15:00Z'), isException: false },
+        { start: new Date('2026-04-02T09:00:00Z'), end: new Date('2026-04-02T09:15:00Z'), isException: false }
+      ],
+      calendarName: 'Team'
+    }
+  ];
+
+  const result = await renderCanvasContent(events, {
+    locale: 'de-DE',
+    timezone: 'UTC',
+    config: { calendars: {} },
+    cacheMap: new Map()
+  });
+
+  // Should show 3 separate entries (all within current week: Mar 30 - Apr 5)
+  assert.strictEqual((result.match(/Daily Standup/g) || []).length, 3);
+});

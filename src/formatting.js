@@ -394,6 +394,30 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
   // Assign calendar indicators (only if multiple calendars)
   const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(events, config, cacheMap);
 
+  // Flatten events to instances for display
+  const flattenedEvents = [];
+  for (const event of events) {
+    if (event.instances && event.instances.length > 0) {
+      // New composite structure: expand instances
+      for (const instance of event.instances) {
+        flattenedEvents.push({
+          id: event.id,
+          title: event.title,
+          location: event.location,
+          description: event.description,
+          isAllDay: event.isAllDay,
+          rrule: event.rrule,
+          start: instance.start,
+          end: instance.end,
+          calendarName: event.calendarName
+        });
+      }
+    } else {
+      // Legacy structure: event already has start/end directly
+      flattenedEvents.push(event);
+    }
+  }
+
   // Group events by day
   const eventsByDay = new Map();
   const currentDate = new Date(dateRange.start);
@@ -405,7 +429,7 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
   }
 
   // Populate events
-  for (const event of events) {
+  for (const event of flattenedEvents) {
     const eventDate = new Date(event.start);
     const dayKey = eventDate.toISOString().split('T')[0];
     if (eventsByDay.has(dayKey)) {
@@ -451,8 +475,8 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
   }
 
   // Summary with calendar legend
-  const totalEvents = events.length;
-  const uniqueCalendars = new Set(events.map(e => e.calendarName).filter(Boolean)).size;
+  const totalEvents = flattenedEvents.length;
+  const uniqueCalendars = new Set(flattenedEvents.map(e => e.calendarName).filter(Boolean)).size;
   const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
   output += `${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {
@@ -899,6 +923,30 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
   // Assign calendar indicators
   const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(events, config, cacheMap);
 
+  // Flatten events to instances for display
+  const flattenedEvents = [];
+  for (const event of events) {
+    if (event.instances && event.instances.length > 0) {
+      // New composite structure: expand instances
+      for (const instance of event.instances) {
+        flattenedEvents.push({
+          id: event.id,
+          title: event.title,
+          location: event.location,
+          description: event.description,
+          isAllDay: event.isAllDay,
+          rrule: event.rrule,
+          start: instance.start,
+          end: instance.end,
+          calendarName: event.calendarName
+        });
+      }
+    } else {
+      // Legacy structure: event already has start/end directly
+      flattenedEvents.push(event);
+    }
+  }
+
   // Helper function to get local date key (YYYY-MM-DD) without timezone conversion
   function getLocalDateKey(date) {
     const year = date.getFullYear();
@@ -916,7 +964,7 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
   eventsByDay.set(todayKey, []);
   eventsByDay.set(tomorrowKey, []);
 
-  for (const event of events) {
+  for (const event of flattenedEvents) {
     const dayKey = getLocalDateKey(event.start);
     if (eventsByDay.has(dayKey)) {
       eventsByDay.get(dayKey).push(event);
@@ -963,8 +1011,8 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
   }
 
   // Summary
-  const totalEvents = events.length;
-  const uniqueCalendars = new Set(events.map(e => e.calendarName).filter(Boolean)).size;
+  const totalEvents = flattenedEvents.length;
+  const uniqueCalendars = new Set(flattenedEvents.map(e => e.calendarName).filter(Boolean)).size;
   const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
   output += `${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {
@@ -1058,8 +1106,32 @@ async function renderCanvasContent(events, options = {}) {
 
   const dateRange = { start: startOfWeek, end: endOfWeek };
 
+  // Flatten events to instances for display
+  const flattenedEvents = [];
+  for (const event of events) {
+    if (event.instances && event.instances.length > 0) {
+      // New composite structure: expand instances
+      for (const instance of event.instances) {
+        flattenedEvents.push({
+          id: event.id,
+          title: event.title,
+          location: event.location,
+          description: event.description,
+          isAllDay: event.isAllDay,
+          rrule: event.rrule,
+          start: instance.start,
+          end: instance.end,
+          calendarName: event.calendarName
+        });
+      }
+    } else {
+      // Legacy structure: event already has start/end directly
+      flattenedEvents.push(event);
+    }
+  }
+
   // Filter events to current week
-  const weekEvents = events.filter(e => {
+  const weekEvents = flattenedEvents.filter(e => {
     const eventDate = new Date(e.start);
     return eventDate >= dateRange.start && eventDate <= dateRange.end;
   });
