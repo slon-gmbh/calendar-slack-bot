@@ -118,6 +118,16 @@ function classifyUrgency(event, nowOrConfig) {
     instances = [{ start: event.start, end: event.end }];
   }
 
+  // Calculate week boundaries once (Monday 00:00 - Sunday 23:59)
+  const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const startOfWeek = new Date(now);
+  startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  startOfWeek.setUTCHours(0, 0, 0, 0);
+
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
+  endOfWeek.setUTCHours(23, 59, 59, 999);
+
   for (const instance of instances) {
     const start = new Date(instance.start);
     const hoursDiff = (start - now) / (1000 * 60 * 60);
@@ -127,16 +137,7 @@ function classifyUrgency(event, nowOrConfig) {
       return 'URGENT';
     }
 
-    // Within current week (Monday 00:00 - Sunday 23:59)
-    const dayOfWeek = now.getUTCDay();
-    const startOfWeek = new Date(now);
-    startOfWeek.setUTCDate(now.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-    startOfWeek.setUTCHours(0, 0, 0, 0);
-
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
-    endOfWeek.setUTCHours(23, 59, 59, 999);
-
+    // Within current week
     if (start >= startOfWeek && start <= endOfWeek) {
       return 'THIS_WEEK';
     }
