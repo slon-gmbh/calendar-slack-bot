@@ -5,7 +5,15 @@ const { diffEvents } = require('../src/diff.js');
 test('diffEvents should detect new events', () => {
   const previous = [];
   const current = [
-    { id: 'e1', title: 'New Event', start: new Date(), end: new Date() }
+    {
+      id: 'e1',
+      title: 'New Event',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: new Date(), end: new Date(), isException: false }]
+    }
   ];
 
   const diffs = diffEvents(previous, current);
@@ -16,7 +24,15 @@ test('diffEvents should detect new events', () => {
 
 test('diffEvents should detect deleted events', () => {
   const previous = [
-    { id: 'e1', title: 'Old Event', start: new Date(), end: new Date() }
+    {
+      id: 'e1',
+      title: 'Old Event',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: new Date(), end: new Date(), isException: false }]
+    }
   ];
   const current = [];
 
@@ -29,12 +45,29 @@ test('diffEvents should detect deleted events', () => {
 test('diffEvents should detect time changes', () => {
   const oldStart = new Date('2026-03-25T09:00:00Z');
   const newStart = new Date('2026-03-25T10:00:00Z');
+  const endDate = new Date();
 
   const previous = [
-    { id: 'e1', title: 'Event', start: oldStart, end: new Date(), location: 'Room A' }
+    {
+      id: 'e1',
+      title: 'Event',
+      location: 'Room A',
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: oldStart, end: endDate, isException: false }]
+    }
   ];
   const current = [
-    { id: 'e1', title: 'Event', start: newStart, end: new Date(), location: 'Room A' }
+    {
+      id: 'e1',
+      title: 'Event',
+      location: 'Room A',
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: newStart, end: endDate, isException: false }]
+    }
   ];
 
   const diffs = diffEvents(previous, current);
@@ -45,11 +78,30 @@ test('diffEvents should detect time changes', () => {
 });
 
 test('diffEvents should detect title changes', () => {
+  const startDate = new Date();
+  const endDate = new Date();
+
   const previous = [
-    { id: 'e1', title: 'Old Title', start: new Date(), end: new Date() }
+    {
+      id: 'e1',
+      title: 'Old Title',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: startDate, end: endDate, isException: false }]
+    }
   ];
   const current = [
-    { id: 'e1', title: 'New Title', start: new Date(), end: new Date() }
+    {
+      id: 'e1',
+      title: 'New Title',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: startDate, end: endDate, isException: false }]
+    }
   ];
 
   const diffs = diffEvents(previous, current);
@@ -58,11 +110,30 @@ test('diffEvents should detect title changes', () => {
 });
 
 test('diffEvents should detect location changes', () => {
+  const startDate = new Date();
+  const endDate = new Date();
+
   const previous = [
-    { id: 'e1', title: 'Event', start: new Date(), end: new Date(), location: 'Room A' }
+    {
+      id: 'e1',
+      title: 'Event',
+      location: 'Room A',
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: startDate, end: endDate, isException: false }]
+    }
   ];
   const current = [
-    { id: 'e1', title: 'Event', start: new Date(), end: new Date(), location: 'Room B' }
+    {
+      id: 'e1',
+      title: 'Event',
+      location: 'Room B',
+      description: null,
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: startDate, end: endDate, isException: false }]
+    }
   ];
 
   const diffs = diffEvents(previous, current);
@@ -71,11 +142,30 @@ test('diffEvents should detect location changes', () => {
 });
 
 test('diffEvents should ignore description changes', () => {
+  const startDate = new Date();
+  const endDate = new Date();
+
   const previous = [
-    { id: 'e1', title: 'Event', start: new Date(), end: new Date(), description: 'Old desc' }
+    {
+      id: 'e1',
+      title: 'Event',
+      location: null,
+      description: 'Old desc',
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: startDate, end: endDate, isException: false }]
+    }
   ];
   const current = [
-    { id: 'e1', title: 'Event', start: new Date(), end: new Date(), description: 'New desc' }
+    {
+      id: 'e1',
+      title: 'Event',
+      location: null,
+      description: 'New desc',
+      isAllDay: false,
+      rrule: null,
+      instances: [{ start: startDate, end: endDate, isException: false }]
+    }
   ];
 
   const diffs = diffEvents(previous, current);
@@ -83,52 +173,168 @@ test('diffEvents should ignore description changes', () => {
 });
 
 test('diffEvents should detect no changes for identical events', () => {
-  const event = { id: 'e1', title: 'Event', start: new Date(), end: new Date() };
+  const startDate = new Date();
+  const endDate = new Date();
+  const event = {
+    id: 'e1',
+    title: 'Event',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: null,
+    instances: [{ start: startDate, end: endDate, isException: false }]
+  };
   const previous = [event];
-  const current = [{ ...event }];
+  const current = [{ ...event, instances: [{ ...event.instances[0] }] }];
 
   const diffs = diffEvents(previous, current);
   assert.strictEqual(diffs.length, 0);
 });
 
-test('diffEvents should detect single change in recurring event instances', () => {
-  // Simulate a recurring event with 5 instances (same UID, different dates)
-  // This reproduces the bug from issue #16
+test('diffEvents should group recurring events by ID (composite structure)', () => {
+  // With composite structure, a recurring event with 5 instances is ONE event, not 5
   const baseUid = 'recurring-event-uid';
 
-  // Previous state: 5 weekly occurrences on Wednesdays
-  const previous = [
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-01T21:00:00Z'), end: new Date('2026-04-01T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-08T21:00:00Z'), end: new Date('2026-04-08T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-15T21:00:00Z'), end: new Date('2026-04-15T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-22T21:00:00Z'), end: new Date('2026-04-22T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-29T21:00:00Z'), end: new Date('2026-04-29T22:30:00Z'), rrule: 'FREQ=WEEKLY' }
-  ];
+  // Previous state: 1 recurring event with 5 instances
+  const previous = [{
+    id: baseUid,
+    title: 'Weekly Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY',
+    instances: [
+      { start: new Date('2026-04-01T21:00:00Z'), end: new Date('2026-04-01T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-08T21:00:00Z'), end: new Date('2026-04-08T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-15T21:00:00Z'), end: new Date('2026-04-15T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-22T21:00:00Z'), end: new Date('2026-04-22T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-29T21:00:00Z'), end: new Date('2026-04-29T22:30:00Z'), isException: false }
+    ]
+  }];
 
-  // Current state: ONE instance modified (April 1 moved to Tuesday instead of Wednesday)
-  const current = [
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-03-31T21:00:00Z'), end: new Date('2026-03-31T22:30:00Z'), rrule: 'FREQ=WEEKLY' }, // Modified: Tuesday instead of Wednesday
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-08T21:00:00Z'), end: new Date('2026-04-08T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-15T21:00:00Z'), end: new Date('2026-04-15T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-22T21:00:00Z'), end: new Date('2026-04-22T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
-    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-29T21:00:00Z'), end: new Date('2026-04-29T22:30:00Z'), rrule: 'FREQ=WEEKLY' }
-  ];
+  // Current state: same recurring event with different instances
+  const current = [{
+    id: baseUid,
+    title: 'Weekly Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY',
+    instances: [
+      { start: new Date('2026-04-08T21:00:00Z'), end: new Date('2026-04-08T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-15T21:00:00Z'), end: new Date('2026-04-15T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-22T21:00:00Z'), end: new Date('2026-04-22T22:30:00Z'), isException: false },
+      { start: new Date('2026-04-29T21:00:00Z'), end: new Date('2026-04-29T22:30:00Z'), isException: false },
+      { start: new Date('2026-05-06T21:00:00Z'), end: new Date('2026-05-06T22:30:00Z'), isException: false }
+    ]
+  }];
 
   const diffs = diffEvents(previous, current);
 
-  // Should detect EXACTLY 1 change: April 1 (Wed) deleted + March 31 (Tue) added
-  // But current implementation will see confusing results due to Map deduplication
-  assert.strictEqual(diffs.length, 2, 'Should detect 1 deleted and 1 new instance');
+  // Since RRULE is the same (both FREQ=WEEKLY), should be 0 diffs
+  assert.strictEqual(diffs.length, 0, 'Same RRULE = no diff');
+});
 
-  const deletedDiff = diffs.find(d => d.type === 'deleted');
-  const newDiff = diffs.find(d => d.type === 'new');
+test('diffEvents should detect new recurring event as single diff (composite structure)', () => {
+  const previous = [];
+  const current = [{
+    id: 'recurring-123',
+    title: 'Weekly Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=TH',
+    instances: [
+      { start: new Date('2026-04-03T10:00:00Z'), end: new Date('2026-04-03T11:00:00Z'), isException: false },
+      { start: new Date('2026-04-10T10:00:00Z'), end: new Date('2026-04-10T11:00:00Z'), isException: false },
+      { start: new Date('2026-04-17T10:00:00Z'), end: new Date('2026-04-17T11:00:00Z'), isException: false }
+    ]
+  }];
 
-  assert.ok(deletedDiff, 'Should have a deleted event');
-  assert.ok(newDiff, 'Should have a new event');
+  const diffs = diffEvents(previous, current);
 
-  // The deleted event should be April 1 (Wednesday)
-  assert.strictEqual(deletedDiff.event.start.toISOString(), '2026-04-01T21:00:00.000Z');
+  assert.strictEqual(diffs.length, 1, 'Should be 1 diff for recurring event, not 3');
+  assert.strictEqual(diffs[0].type, 'new');
+  assert.strictEqual(diffs[0].event.id, 'recurring-123');
+  assert.strictEqual(diffs[0].event.rrule, 'FREQ=WEEKLY;BYDAY=TH');
+});
 
-  // The new event should be March 31 (Tuesday)
-  assert.strictEqual(newDiff.event.start.toISOString(), '2026-03-31T21:00:00.000Z');
+test('diffEvents should detect RRULE pattern change (composite structure)', () => {
+  const previous = [{
+    id: 'event-123',
+    title: 'Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=TH',
+    instances: [
+      { start: new Date('2026-04-03T10:00:00Z'), end: new Date('2026-04-03T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const current = [{
+    id: 'event-123',
+    title: 'Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=DAILY',
+    instances: [
+      { start: new Date('2026-04-03T10:00:00Z'), end: new Date('2026-04-03T11:00:00Z'), isException: false },
+      { start: new Date('2026-04-04T10:00:00Z'), end: new Date('2026-04-04T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const diffs = diffEvents(previous, current);
+
+  assert.strictEqual(diffs.length, 1);
+  assert.strictEqual(diffs[0].type, 'pattern_changed');
+  assert.strictEqual(diffs[0].old.rrule, 'FREQ=WEEKLY;BYDAY=TH');
+  assert.strictEqual(diffs[0].new.rrule, 'FREQ=DAILY');
+});
+
+test('diffEvents should not generate multiple diffs for recurring event instances (composite structure)', () => {
+  const previous = [];
+  const current = [{
+    id: 'recurring-456',
+    title: 'Daily Standup',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=DAILY',
+    instances: [
+      { start: new Date('2026-04-01T09:00:00Z'), end: new Date('2026-04-01T09:15:00Z'), isException: false },
+      { start: new Date('2026-04-02T09:00:00Z'), end: new Date('2026-04-02T09:15:00Z'), isException: false },
+      { start: new Date('2026-04-03T09:00:00Z'), end: new Date('2026-04-03T09:15:00Z'), isException: false },
+      { start: new Date('2026-04-04T09:00:00Z'), end: new Date('2026-04-04T09:15:00Z'), isException: false },
+      { start: new Date('2026-04-05T09:00:00Z'), end: new Date('2026-04-05T09:15:00Z'), isException: false }
+    ]
+  }];
+
+  const diffs = diffEvents(previous, current);
+
+  // Should be 1 diff, not 5
+  assert.strictEqual(diffs.length, 1, 'Should be 1 diff for 5 instances of same recurring event');
+  assert.strictEqual(diffs[0].type, 'new');
+});
+
+test('diffEvents should handle single-instance events with instances array (composite structure)', () => {
+  const previous = [];
+  const current = [{
+    id: 'single-123',
+    title: 'One-time Event',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: null,
+    instances: [
+      { start: new Date('2026-04-03T14:00:00Z'), end: new Date('2026-04-03T15:00:00Z'), isException: false }
+    ]
+  }];
+
+  const diffs = diffEvents(previous, current);
+
+  assert.strictEqual(diffs.length, 1);
+  assert.strictEqual(diffs[0].type, 'new');
+  assert.strictEqual(diffs[0].event.id, 'single-123');
 });

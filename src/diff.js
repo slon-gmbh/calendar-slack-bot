@@ -3,17 +3,13 @@
  */
 
 /**
- * Generate a unique key for an event instance
- * For recurring events, instances share the same UID but have different start times
- * @param {Object} event - Event object
- * @returns {string} Unique key for this event instance
+ * Generate a unique key for an event
+ * With composite structure, recurring events are grouped by ID, not per-instance
+ * @param {Object} event - Event object (composite structure with instances array)
+ * @returns {string} Unique key for this event
  */
 function getEventKey(event) {
-  // For recurring events, use UID + start timestamp to uniquely identify instances
-  if (event.rrule) {
-    return `${event.id}:${event.start.getTime()}`;
-  }
-  // For non-recurring events, UID alone is sufficient
+  // Use event ID only - recurring events share same ID across instances
   return event.id;
 }
 
@@ -64,45 +60,52 @@ function diffEvents(previous, current) {
 }
 
 /**
- * Detect specific changes between two events
+ * Detect specific changes between two events (composite structure)
+ * Works with both recurring (with rrule) and non-recurring events
  */
 function detectChanges(oldEvent, newEvent) {
-  // For recurring events, compare rrule instead of individual instance timestamps
-  // This prevents false positives from DST transitions affecting regenerated instances
+  // For recurring events, compare RRULE instead of individual instance timestamps
   if (oldEvent.rrule || newEvent.rrule) {
-    // If rrule changed or appeared/disappeared, that's a schedule change
+    // If RRULE changed or appeared/disappeared, that's a pattern change
     if (oldEvent.rrule !== newEvent.rrule) {
       console.log(`[DIFF] Recurrence pattern changed for "${newEvent.title}"`);
       return {
-        type: 'time_changed',
+        type: 'pattern_changed',
         event: newEvent,
-        old: { start: oldEvent.start, end: oldEvent.end, isAllDay: oldEvent.isAllDay },
-        new: { start: newEvent.start, end: newEvent.end, isAllDay: newEvent.isAllDay }
+        old: { rrule: oldEvent.rrule },
+        new: { rrule: newEvent.rrule }
       };
     }
-    // Same rrule = same recurring pattern, skip time comparison for instances
-    // (instances will have different UTC timestamps across DST but represent same local times)
+    // Same RRULE = same recurring pattern, no time change to report
   } else {
-    // Non-recurring event: compare actual timestamps
-    const oldStart = oldEvent.start ? new Date(oldEvent.start).getTime() : null;
-    const newStart = newEvent.start ? new Date(newEvent.start).getTime() : null;
-    const oldEnd = oldEvent.end ? new Date(oldEvent.end).getTime() : null;
-    const newEnd = newEvent.end ? new Date(newEvent.end).getTime() : null;
+    // Non-recurring event: compare actual timestamps of first (only) instance
+    const oldStart = oldEvent.instances[0].start ? new Date(oldEvent.instances[0].start).getTime() : null;
+    const newStart = newEvent.instances[0].start ? new Date(newEvent.instances[0].start).getTime() : null;
+    const oldEnd = oldEvent.instances[0].end ? new Date(oldEvent.instances[0].end).getTime() : null;
+    const newEnd = newEvent.instances[0].end ? new Date(newEvent.instances[0].end).getTime() : null;
 
     if (oldStart !== newStart || oldEnd !== newEnd) {
       // Debug logging for real time changes
       if (oldStart !== newStart) {
-        console.log(`[DIFF] Start time changed for "${newEvent.title}": ${oldEvent.start?.toISOString?.()} → ${newEvent.start?.toISOString?.()}`);
+        console.log(`[DIFF] Start time changed for "${newEvent.title}": ${oldEvent.instances[0].start?.toISOString?.()} → ${newEvent.instances[0].start?.toISOString?.()}`);
       }
       if (oldEnd !== newEnd) {
-        console.log(`[DIFF] End time changed for "${newEvent.title}": ${oldEvent.end?.toISOString?.()} → ${newEvent.end?.toISOString?.()}`);
+        console.log(`[DIFF] End time changed for "${newEvent.title}": ${oldEvent.instances[0].end?.toISOString?.()} → ${newEvent.instances[0].end?.toISOString?.()}`);
       }
 
       return {
         type: 'time_changed',
         event: newEvent,
-        old: { start: oldEvent.start, end: oldEvent.end, isAllDay: oldEvent.isAllDay },
-        new: { start: newEvent.start, end: newEvent.end, isAllDay: newEvent.isAllDay }
+        old: {
+          start: oldEvent.instances[0].start,
+          end: oldEvent.instances[0].end,
+          isAllDay: oldEvent.isAllDay
+        },
+        new: {
+          start: newEvent.instances[0].start,
+          end: newEvent.instances[0].end,
+          isAllDay: newEvent.isAllDay
+        }
       };
     }
   }
