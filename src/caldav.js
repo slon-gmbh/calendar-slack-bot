@@ -74,13 +74,24 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
 
         // Build composite event
         if (eventInstances.length > 0) {
+          // Extract RRULE string (same logic as normalizeEvent)
+          const rruleRaw = event.rrule.toString();
+          const rruleLine = rruleRaw.split('\n').find(line => line.startsWith('RRULE:'));
+          let rruleString = null;
+
+          if (rruleLine) {
+            rruleString = rruleLine.substring(6); // Skip "RRULE:"
+          } else if (rruleRaw.startsWith('FREQ=')) {
+            rruleString = rruleRaw; // Already in simple format
+          }
+
           eventMap.set(event.uid, {
             id: event.uid,
             title: event.summary || '(No title)',
             location: event.location || null,
             description: event.description || null,
             isAllDay: event.datetype === 'date',
-            rrule: event.rrule.toString(),
+            rrule: rruleString,
             instances: eventInstances
           });
         }
@@ -208,11 +219,25 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   };
 
   // Return composite structure
-  const rruleString = icalEvent.rrule ? icalEvent.rrule.toString() : null;
+  let rruleString = null;
+  if (icalEvent.rrule) {
+    const rruleRaw = icalEvent.rrule.toString();
 
-  // Debug logging for RRULE capture
-  if (rruleString) {
-    console.log(`[CalDAV] Captured RRULE for "${icalEvent.summary}": ${rruleString}`);
+    // Extract just the RRULE line from multi-line string (DTSTART + RRULE)
+    // Example: "DTSTART;TZID=Europe/Berlin:20260128T200000\nRRULE:FREQ=WEEKLY;BYDAY=WE"
+    const rruleLine = rruleRaw.split('\n').find(line => line.startsWith('RRULE:'));
+
+    if (rruleLine) {
+      // Remove "RRULE:" prefix to get just the parameters
+      rruleString = rruleLine.substring(6); // Skip "RRULE:"
+      console.log(`[CalDAV] Extracted RRULE for "${icalEvent.summary}": ${rruleString}`);
+    } else if (rruleRaw.startsWith('FREQ=')) {
+      // Already in simple format (from tests or some iCal implementations)
+      rruleString = rruleRaw;
+      console.log(`[CalDAV] Using simple RRULE for "${icalEvent.summary}": ${rruleString}`);
+    } else {
+      console.warn(`[CalDAV] No RRULE line found in: ${rruleRaw}`);
+    }
   }
 
   const normalized = {
