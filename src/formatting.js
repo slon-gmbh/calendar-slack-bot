@@ -1184,17 +1184,17 @@ async function renderCanvasContent(events, options = {}) {
 /**
  * Render calendar legend showing which color corresponds to which calendar
  * @param {Array} calendarNames - Array of calendar names
+ * @param {Map} indicatorMap - Map of calendar name to color indicator emoji
  * @returns {string} Formatted legend
  */
-function renderCalendarLegend(calendarNames) {
+function renderCalendarLegend(calendarNames, indicatorMap) {
   if (!calendarNames || calendarNames.length === 0) {
     return '';
   }
 
   const legendItems = [];
   for (const calName of calendarNames) {
-    const index = hashCalendarName(calName);
-    const indicator = CALENDAR_INDICATORS[index];
+    const indicator = indicatorMap?.get(calName) || CALENDAR_INDICATORS[hashCalendarName(calName)];
     legendItems.push(`${indicator} ${calName}`);
   }
 
@@ -1209,5 +1209,6 @@ module.exports = {
   renderDailyView,
   renderCanvasContent,
   renderCalendarLegend,
-  formatRecurrencePattern
+  formatRecurrencePattern,
+  assignCalendarIndicators
 };

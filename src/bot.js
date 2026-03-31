@@ -260,7 +260,12 @@ async function runChangeDetection(config, dryRun) {
   for (const [channelId, calendars] of channelCalendars) {
     console.log(`[Legend] Channel ${channelId} has ${calendars.size} calendar(s): ${Array.from(calendars).join(', ')}`);
     if (calendars.size > 1) {
-      const legend = renderCalendarLegend(Array.from(calendars).sort());
+      // Get color indicators using same logic as change notifications
+      const { assignCalendarIndicators } = require('./formatting.js');
+      const dummyEvents = Array.from(calendars).map(name => ({ calendarName: name }));
+      const { indicatorMap } = await assignCalendarIndicators(dummyEvents, config, cacheMap);
+
+      const legend = renderCalendarLegend(Array.from(calendars).sort(), indicatorMap);
       console.log(`Posting calendar legend to channel ${channelId} (${calendars.size} calendars): ${legend}`);
       await postMessage(channelId, legend, dryRun, config.error_channel);
     }
