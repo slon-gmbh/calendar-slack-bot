@@ -187,10 +187,12 @@ async function runChangeDetection(config, dryRun) {
       cachedData = await loadCacheState(calId, cacheDir);
 
       // Fetch current events
+      const timezone = config.timezone || 'UTC';
       const currentEvents = await fetchCalendar(
         calendar.caldav_url,
         config.caldav_credentials,
-        dateRange
+        dateRange,
+        timezone
       );
 
       if (!cachedData) {
