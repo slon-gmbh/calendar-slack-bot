@@ -126,7 +126,7 @@ async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, 
     const { message: notification, newColors } = await renderBundledNotification(notifiableDiffs, locale, timezone, { config, cacheMap });
 
     console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
-    await postMessage(channel.id, notification, dryRun);
+    await postMessage(channel.id, notification, dryRun, config.error_channel);
 
     // Persist fetched colors to cache
     if (newColors && cacheDir) {
@@ -260,7 +260,7 @@ async function runChangeDetection(config, dryRun) {
     if (calendars.size > 1) {
       const legend = renderCalendarLegend(Array.from(calendars).sort());
       console.log(`Posting calendar legend to channel ${channelId} (${calendars.size} calendars)`);
-      await postMessage(channelId, legend, dryRun);
+      await postMessage(channelId, legend, dryRun, config.error_channel);
     }
   }
 
@@ -291,7 +291,7 @@ async function main() {
     }
 
     if (dryRun) {
-      console.log('[DRY RUN] No Slack API calls were made.');
+      console.log('[TEST MODE] All messages routed to error_channel. Canvas updates skipped.');
     }
 
     process.exit(0);
@@ -442,7 +442,7 @@ async function postDigestForChannel(config, channel, type, dryRun) {
   const digest = type === 'daily'
     ? await renderDailyView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap, canvas_url: channel.canvas_url })
     : await renderWeekView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap, canvas_url: channel.canvas_url });
-  await postMessage(channel.id, digest, dryRun);
+  await postMessage(channel.id, digest, dryRun, config.error_channel);
 
   // Update Canvas (always full week)
   const canvasContent = await renderCanvasContent(allEvents, { locale, timezone, ...channel, config, cacheMap });
@@ -629,7 +629,7 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
       const locale = channel.locale || config.locale;
       const timezone = channel.timezone || config.timezone || 'UTC';
       const { message: staleNotification, newColors: staleNewColors } = await renderBundledNotification(pending.diffs, locale, timezone, { config, cacheMap });
-      await postMessage(channel.id, staleNotification, dryRun);
+      await postMessage(channel.id, staleNotification, dryRun, config.error_channel);
 
       // Persist colors from stale diffs
       if (staleNewColors && cacheDir) {
@@ -661,7 +661,7 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, dryRu
     const locale = channel.locale || config.locale;
     const timezone = channel.timezone || config.timezone || 'UTC';
     const { message: notification, newColors } = await renderBundledNotification(allDiffs, locale, timezone, { config, cacheMap });
-    await postMessage(channel.id, notification, dryRun);
+    await postMessage(channel.id, notification, dryRun, config.error_channel);
 
     // Persist fetched colors to cache
     if (newColors && cacheDir) {

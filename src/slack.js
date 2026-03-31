@@ -20,15 +20,26 @@ function getClient() {
  * Post message to Slack channel
  * @param {string} channelId - Slack channel ID
  * @param {string} text - Message text (markdown)
- * @param {boolean} dryRun - If true, log instead of posting
+ * @param {boolean} dryRun - If true, route to error_channel (test mode)
+ * @param {string|null} errorChannel - Error channel ID for test mode routing
  * @returns {Promise<void>}
  */
-async function postMessage(channelId, text, dryRun = false) {
+async function postMessage(channelId, text, dryRun = false, errorChannel = null) {
   if (dryRun) {
-    console.log(`[DRY RUN] Would post to channel ${channelId}:`);
-    console.log(text);
-    console.log('');
-    return;
+    if (!errorChannel) {
+      console.log(`[TEST MODE] No error_channel configured, skipping message to ${channelId}:`);
+      console.log(text);
+      console.log('');
+      return;
+    }
+
+    // If already posting to error channel, don't double-route
+    if (channelId !== errorChannel) {
+      console.log(`[TEST MODE] Routing message to error_channel (${errorChannel}) instead of ${channelId}`);
+      channelId = errorChannel;
+    } else {
+      console.log(`[TEST MODE] Posting to error_channel ${channelId}`);
+    }
   }
 
   try {
@@ -47,14 +58,12 @@ async function postMessage(channelId, text, dryRun = false) {
  * Update Slack Canvas content
  * @param {string} canvasId - Slack Canvas ID
  * @param {string} content - Markdown content
- * @param {boolean} dryRun - If true, log instead of updating
+ * @param {boolean} dryRun - If true, skip canvas update (test mode)
  * @returns {Promise<void>}
  */
 async function updateCanvas(canvasId, content, dryRun = false) {
   if (dryRun) {
-    console.log(`[DRY RUN] Would update Canvas ${canvasId}:`);
-    console.log(content);
-    console.log('');
+    console.log(`[TEST MODE] Skipping canvas update for ${canvasId}`);
     return;
   }
 
@@ -79,7 +88,7 @@ async function updateCanvas(canvasId, content, dryRun = false) {
  * Post error notification
  * @param {string} errorChannelId - Error channel ID (optional)
  * @param {string} message - Error message
- * @param {boolean} dryRun - If true, log instead of posting
+ * @param {boolean} dryRun - If true, enable test mode
  * @returns {Promise<void>}
  */
 async function postErrorNotification(errorChannelId, message, dryRun = false) {
@@ -94,7 +103,8 @@ async function postErrorNotification(errorChannelId, message, dryRun = false) {
 
   const errorText = `⚠️ **Calendar Bot Error**\n\n${message}\n\nTime: ${new Date().toISOString()}\nRun: ${runUrl}`;
 
-  await postMessage(errorChannelId, errorText, dryRun);
+  // Pass errorChannelId as the errorChannel parameter so test mode works correctly
+  await postMessage(errorChannelId, errorText, dryRun, errorChannelId);
 }
 
 module.exports = {
