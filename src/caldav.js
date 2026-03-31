@@ -151,8 +151,12 @@ function convertToUTC(date, defaultTimezone) {
     offsetMinutes = sign * (offsetHours * 60 + offsetMins);
   }
 
+  // Debug logging for offset calculation (#7)
+  const resultUTC = new Date(Date.UTC(year, month, day, hours, minutes, seconds, ms) + offsetMinutes * 60000);
+  console.log(`[TZ-CONVERT] Input=${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}T${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}, TZ=${defaultTimezone}, Offset=${offsetStr} (${offsetMinutes}min), Result=${resultUTC.toISOString()}`);
+
   // Add the offset to get proper UTC
-  return new Date(Date.UTC(year, month, day, hours, minutes, seconds, ms) + offsetMinutes * 60000);
+  return resultUTC;
 }
 
 function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
@@ -181,8 +185,11 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
     normalizedStart = start instanceof Date ? start : new Date(start);
     normalizedEnd = end instanceof Date ? end : new Date(end);
   } else {
+    // Debug logging for timezone conversion (#7)
+    const startBeforeConversion = start instanceof Date ? start.toISOString() : new Date(start).toISOString();
     normalizedStart = convertToUTC(start, timezone);
     normalizedEnd = convertToUTC(end, timezone);
+    console.log(`[TZ] Event "${icalEvent.summary}": Original=${startBeforeConversion}, Timezone=${timezone}, UTC=${normalizedStart.toISOString()}`);
   }
 
   // Validate dates

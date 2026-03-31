@@ -314,6 +314,10 @@ function formatEventTime(event, locale = 'en-US', timezone = 'UTC') {
   });
 
   const formatted = timeFormat.format(event.start);
+
+  // Debug logging for time display (#7)
+  console.log(`[TZ-DISPLAY] Event "${event.title}": UTC=${event.start.toISOString()}, DisplayTZ=${timezone}, Formatted=${formatted}`);
+
   return formatted;
 }
 
