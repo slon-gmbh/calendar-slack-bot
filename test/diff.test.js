@@ -90,3 +90,45 @@ test('diffEvents should detect no changes for identical events', () => {
   const diffs = diffEvents(previous, current);
   assert.strictEqual(diffs.length, 0);
 });
+
+test('diffEvents should detect single change in recurring event instances', () => {
+  // Simulate a recurring event with 5 instances (same UID, different dates)
+  // This reproduces the bug from issue #16
+  const baseUid = 'recurring-event-uid';
+
+  // Previous state: 5 weekly occurrences on Wednesdays
+  const previous = [
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-01T21:00:00Z'), end: new Date('2026-04-01T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-08T21:00:00Z'), end: new Date('2026-04-08T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-15T21:00:00Z'), end: new Date('2026-04-15T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-22T21:00:00Z'), end: new Date('2026-04-22T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-29T21:00:00Z'), end: new Date('2026-04-29T22:30:00Z'), rrule: 'FREQ=WEEKLY' }
+  ];
+
+  // Current state: ONE instance modified (April 1 moved to Tuesday instead of Wednesday)
+  const current = [
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-03-31T21:00:00Z'), end: new Date('2026-03-31T22:30:00Z'), rrule: 'FREQ=WEEKLY' }, // Modified: Tuesday instead of Wednesday
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-08T21:00:00Z'), end: new Date('2026-04-08T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-15T21:00:00Z'), end: new Date('2026-04-15T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-22T21:00:00Z'), end: new Date('2026-04-22T22:30:00Z'), rrule: 'FREQ=WEEKLY' },
+    { id: baseUid, title: 'Weekly Meeting', start: new Date('2026-04-29T21:00:00Z'), end: new Date('2026-04-29T22:30:00Z'), rrule: 'FREQ=WEEKLY' }
+  ];
+
+  const diffs = diffEvents(previous, current);
+
+  // Should detect EXACTLY 1 change: April 1 (Wed) deleted + March 31 (Tue) added
+  // But current implementation will see confusing results due to Map deduplication
+  assert.strictEqual(diffs.length, 2, 'Should detect 1 deleted and 1 new instance');
+
+  const deletedDiff = diffs.find(d => d.type === 'deleted');
+  const newDiff = diffs.find(d => d.type === 'new');
+
+  assert.ok(deletedDiff, 'Should have a deleted event');
+  assert.ok(newDiff, 'Should have a new event');
+
+  // The deleted event should be April 1 (Wednesday)
+  assert.strictEqual(deletedDiff.event.start.toISOString(), '2026-04-01T21:00:00.000Z');
+
+  // The new event should be March 31 (Tuesday)
+  assert.strictEqual(newDiff.event.start.toISOString(), '2026-03-31T21:00:00.000Z');
+});

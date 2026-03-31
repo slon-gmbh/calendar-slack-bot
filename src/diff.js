@@ -3,6 +3,21 @@
  */
 
 /**
+ * Generate a unique key for an event instance
+ * For recurring events, instances share the same UID but have different start times
+ * @param {Object} event - Event object
+ * @returns {string} Unique key for this event instance
+ */
+function getEventKey(event) {
+  // For recurring events, use UID + start timestamp to uniquely identify instances
+  if (event.rrule) {
+    return `${event.id}:${event.start.getTime()}`;
+  }
+  // For non-recurring events, UID alone is sufficient
+  return event.id;
+}
+
+/**
  * Compare two event arrays and detect changes
  * @param {Array} previous - Previous events
  * @param {Array} current - Current events
@@ -11,13 +26,13 @@
 function diffEvents(previous, current) {
   const diffs = [];
 
-  // Create maps for fast lookup
-  const prevMap = new Map(previous.map(e => [e.id, e]));
-  const currMap = new Map(current.map(e => [e.id, e]));
+  // Create maps for fast lookup using composite keys for recurring event instances
+  const prevMap = new Map(previous.map(e => [getEventKey(e), e]));
+  const currMap = new Map(current.map(e => [getEventKey(e), e]));
 
   // Detect new and modified events
   for (const currEvent of current) {
-    const prevEvent = prevMap.get(currEvent.id);
+    const prevEvent = prevMap.get(getEventKey(currEvent));
 
     if (!prevEvent) {
       // New event
@@ -37,7 +52,7 @@ function diffEvents(previous, current) {
 
   // Detect deleted events
   for (const prevEvent of previous) {
-    if (!currMap.has(prevEvent.id)) {
+    if (!currMap.has(getEventKey(prevEvent))) {
       diffs.push({
         type: 'deleted',
         event: prevEvent
