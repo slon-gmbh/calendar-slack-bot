@@ -11,6 +11,23 @@ GitHub Actions-based Slack bot that bridges Nextcloud CalDAV calendars with Slac
 - **Locale Support**: Multilingual date/time formatting
 - **Zero Infrastructure**: Runs entirely in GitHub Actions
 
+### Recurring Event Support
+
+The bot intelligently handles recurring events:
+
+- **Smart notifications**: Single notification per recurring event (not one per instance)
+- **Human-readable patterns**: "Wöchentlich, Mo., Mi., Fr." instead of technical RRULE
+- **Pattern change detection**: Notifies when recurrence rules are modified
+- **All patterns supported**: Daily, weekly, monthly, yearly with intervals and positions
+
+Example notification:
+```
+1 Kalenderänderung
+
+Neuer Termin:
+• Team Standup · Täglich · 09:00-09:15
+```
+
 ## Prerequisites
 
 ### 1. Nextcloud Webhook Setup (REQUIRED)
