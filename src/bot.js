@@ -172,6 +172,9 @@ async function runChangeDetection(config, dryRun) {
 
   console.log(`Checking calendars for changes (${dateRange.start.toISOString()} to ${dateRange.end.toISOString()})`);
 
+  // Build cache map for color indicator assignment
+  const cacheMap = await buildCacheMap(config);
+
   // Track which calendars posted to which channels
   const channelCalendars = new Map(); // channelId -> Set of calendar names
 
