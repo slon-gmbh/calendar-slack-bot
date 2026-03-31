@@ -811,9 +811,22 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
       const { event, old, new: newData, calendarName } = diff;
       const oldPattern = formatRecurrencePattern(old.rrule, locale);
       const newPattern = formatRecurrencePattern(newData.rrule, locale);
+
+      // Add time for recurring events (use first instance)
+      let timeStr = '';
+      if (event.instances && event.instances.length > 0) {
+        const firstInstance = event.instances[0];
+        if (event.isAllDay) {
+          timeStr = ` · ${getTranslation(locale, 'allDay')}`;
+        } else {
+          const formattedTime = formatEventTime({ ...event, start: firstInstance.start, end: firstInstance.end }, locale, timezone);
+          timeStr = ` · ${formattedTime}`;
+        }
+      }
+
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
-      output += `• ${event.title} · ${oldPattern} → ${newPattern}${calendar}\n`;
+      output += `• ${event.title} · ${oldPattern} → ${newPattern}${timeStr}${calendar}\n`;
     }
     output += '\n';
   }
