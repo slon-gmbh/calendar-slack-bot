@@ -201,13 +201,20 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   };
 
   // Return composite structure
+  const rruleString = icalEvent.rrule ? icalEvent.rrule.toString() : null;
+
+  // Debug logging for RRULE capture
+  if (rruleString) {
+    console.log(`[CalDAV] Captured RRULE for "${icalEvent.summary}": ${rruleString}`);
+  }
+
   const normalized = {
     id: icalEvent.uid,
     title: icalEvent.summary || '(No title)',
     location: icalEvent.location || null,
     description: icalEvent.description || null,
     isAllDay: isAllDay,
-    rrule: icalEvent.rrule ? icalEvent.rrule.toString() : null,
+    rrule: rruleString,
     instances: [instance]
   };
 
