@@ -58,6 +58,24 @@ async function loadCacheState(calendarId, cacheDir) {
           }
         }
 
+        // Migrate RRULE from old multi-line format if needed
+        let rrule = event.rrule || null;
+        if (rrule && typeof rrule === 'string' && rrule.includes('\n')) {
+          // Old cache had multi-line RRULE (DTSTART + RRULE), extract just the RRULE line
+          const rruleLine = rrule.split('\n').find(line => line.startsWith('RRULE:'));
+          if (rruleLine) {
+            rrule = rruleLine.substring(6); // Skip "RRULE:" prefix
+            console.log(`[Cache Migration] Extracted RRULE for "${event.title}": ${rrule}`);
+          } else if (rrule.startsWith('FREQ=')) {
+            // Already in simple format
+            rrule = rrule;
+          } else {
+            // Invalid format, set to null
+            console.warn(`[Cache Migration] Invalid RRULE format for "${event.title}": ${rrule}`);
+            rrule = null;
+          }
+        }
+
         // Migrate old format to composite structure
         return {
           id: event.id,
@@ -65,7 +83,7 @@ async function loadCacheState(calendarId, cacheDir) {
           location: event.location || null,
           description: event.description || null,
           isAllDay: event.isAllDay,
-          rrule: event.rrule || null,
+          rrule,
           instances: [{
             start,
             end: end || start,
