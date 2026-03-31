@@ -24,6 +24,22 @@ function parseRRule(rrule) {
 }
 
 /**
+ * Parse positional day pattern (e.g., "2MO" = 2nd Monday, "-1FR" = last Friday)
+ * @param {string} byDay - BYDAY value (e.g., "2MO", "-1FR")
+ * @param {Object} dayMap - Day abbreviation mapping
+ * @returns {string|null} Formatted positional text or null if not positional
+ */
+function parsePositionalDay(byDay, dayMap) {
+  const positionalMatch = byDay.match(/^(-?\d+)([A-Z]{2})$/);
+  if (positionalMatch) {
+    const [, position, day] = positionalMatch;
+    const posText = position === '-1' ? 'letzter' : `${position}.`;
+    return `${posText} ${dayMap[day] || day}`;
+  }
+  return null;
+}
+
+/**
  * Format recurrence pattern as human-readable German text
  * @param {string|null} rrule - RRULE string (e.g., "FREQ=WEEKLY;BYDAY=MO,WE")
  * @param {string} locale - Locale (currently only de-DE supported)
@@ -31,6 +47,11 @@ function parseRRule(rrule) {
  */
 function formatRecurrencePattern(rrule, locale = 'de-DE') {
   if (!rrule) return null;
+
+  // Currently only de-DE supported
+  if (locale !== 'de-DE') {
+    console.warn(`formatRecurrencePattern: Unsupported locale "${locale}", falling back to de-DE`);
+  }
 
   try {
     const parsed = parseRRule(rrule);
@@ -78,11 +99,9 @@ function formatRecurrencePattern(rrule, locale = 'de-DE') {
     // Add day/date details
     if (byDay) {
       // Check for positional patterns (e.g., "2MO" = 2nd Monday)
-      const positionalMatch = byDay.match(/^(-?\d+)([A-Z]{2})$/);
-      if (positionalMatch) {
-        const [, position, day] = positionalMatch;
-        const posText = position === '-1' ? 'letzter' : `${position}.`;
-        details = `${posText} ${dayMap[day] || day}`;
+      const positionalText = parsePositionalDay(byDay, dayMap);
+      if (positionalText) {
+        details = positionalText;
       } else {
         // Multiple days (e.g., "MO,WE,FR")
         const days = byDay.split(',').map(d => dayMap[d] || d);
@@ -96,11 +115,9 @@ function formatRecurrencePattern(rrule, locale = 'de-DE') {
     if (freq === 'YEARLY' && byMonth) {
       const monthName = monthMap[byMonth] || byMonth;
       if (byDay) {
-        const positionalMatch = byDay.match(/^(-?\d+)([A-Z]{2})$/);
-        if (positionalMatch) {
-          const [, position, day] = positionalMatch;
-          const posText = position === '-1' ? 'letzter' : `${position}.`;
-          details = `${posText} ${dayMap[day] || day} im ${monthName}`;
+        const positionalText = parsePositionalDay(byDay, dayMap);
+        if (positionalText) {
+          details = `${positionalText} im ${monthName}`;
         }
       } else if (byMonthDay) {
         details = `${byMonthDay}. ${monthName}`;
