@@ -95,7 +95,7 @@ test('renderChangeNotification should format new events', () => {
     calendarName: 'Team'
   };
 
-  const result = renderChangeNotification(diff, 'en-US');
+  const result = renderChangeNotification(diff, 'de-DE');
   assert.match(result, /Neuer Termin:/);
   assert.match(result, /New Meeting/);
 
@@ -948,4 +948,84 @@ test('formatRecurrencePattern should handle invalid RRULE gracefully', () => {
 test('formatRecurrencePattern should return null for null input', () => {
   const result = formatRecurrencePattern(null, 'de-DE');
   assert.strictEqual(result, null);
+});
+
+test('renderChangeNotification should show recurrence pattern for new recurring event', () => {
+  const diff = {
+    type: 'new',
+    event: {
+      id: 'recurring-123',
+      title: 'Weekly Meeting',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: 'FREQ=WEEKLY;BYDAY=TH',
+      instances: [
+        { start: new Date('2026-04-03T10:00:00Z'), end: new Date('2026-04-03T11:00:00Z'), isException: false }
+      ]
+    },
+    calendarName: 'Team'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'UTC', new Map());
+
+  assert.match(result, /Wöchentlich, Do\./);
+  assert.match(result, /Weekly Meeting/);
+});
+
+test('renderChangeNotification should show pattern change', () => {
+  const diff = {
+    type: 'pattern_changed',
+    event: {
+      id: 'event-123',
+      title: 'Standup',
+      location: null,
+      description: null,
+      isAllDay: false,
+      rrule: 'FREQ=DAILY',
+      instances: [
+        { start: new Date('2026-04-03T09:00:00Z'), end: new Date('2026-04-03T09:15:00Z'), isException: false }
+      ]
+    },
+    old: { rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR' },
+    new: { rrule: 'FREQ=DAILY' },
+    calendarName: 'Team'
+  };
+
+  const result = renderChangeNotification(diff, 'de-DE', 'UTC', new Map());
+
+  assert.match(result, /Wöchentlich, Mo\., Mi\., Fr\./);
+  assert.match(result, /→/);
+  assert.match(result, /Täglich/);
+});
+
+test('renderBundledNotification should collapse recurring events', async () => {
+  const diffs = [
+    {
+      type: 'new',
+      event: {
+        id: 'recurring-1',
+        title: 'Weekly Meeting',
+        location: null,
+        description: null,
+        isAllDay: true,
+        rrule: 'FREQ=WEEKLY;BYDAY=TH',
+        instances: [
+          { start: new Date('2026-04-03T00:00:00Z'), end: new Date('2026-04-04T00:00:00Z'), isException: false },
+          { start: new Date('2026-04-10T00:00:00Z'), end: new Date('2026-04-11T00:00:00Z'), isException: false }
+        ]
+      },
+      calendarName: 'Team'
+    }
+  ];
+
+  const { message: result } = await renderBundledNotification(diffs, 'de-DE', 'UTC', {});
+
+  // Should show as 1 notification (not multiple instances), displaying recurrence pattern
+  assert.match(result, /Neuer Termin:/);
+  assert.match(result, /Weekly Meeting/);
+  assert.match(result, /Wöchentlich, Do\./);
+  assert.match(result, /Ganztägig/);
+  // Should NOT show specific dates for recurring events
+  assert.ok(!result.includes('03.'), 'Should not show specific date for recurring event');
 });

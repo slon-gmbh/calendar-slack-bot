@@ -170,6 +170,7 @@ const TRANSLATIONS = {
     today: 'Heute',
     tomorrow: 'Morgen',
     new: 'Neu',
+    newEvent: 'Neuer Termin',
     cancelled: 'Abgesagt',
     moved: 'Verschoben',
     updated: 'Aktualisiert',
@@ -193,6 +194,7 @@ const TRANSLATIONS = {
     today: 'Today',
     tomorrow: 'Tomorrow',
     new: 'New',
+    newEvent: 'New event',
     cancelled: 'Cancelled',
     moved: 'Moved',
     updated: 'Updated',
@@ -481,6 +483,26 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
 }
 
 /**
+ * Get event start/end dates - supports both old (event.start) and new (event.instances[0].start) structures
+ * @param {Object} event - Event object
+ * @returns {Object} {start, end}
+ */
+function getEventDates(event) {
+  // New structure: event has instances array
+  if (event.instances && event.instances.length > 0) {
+    return {
+      start: event.instances[0].start,
+      end: event.instances[0].end
+    };
+  }
+  // Old structure: event has start/end directly
+  return {
+    start: event.start,
+    end: event.end
+  };
+}
+
+/**
  * Render change notification for a single event change
  * @param {Object} diff - Diff object from diffEvents
  * @param {string} locale - Locale for formatting
@@ -490,13 +512,7 @@ async function renderWeekView(events, dateRange, locale = 'en-US', options = {})
  */
 function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC', calendarIndicators = new Map()) {
   const { type, event, old, new: newData, calendarName } = diff;
-
-  const dateStr = new Intl.DateTimeFormat(locale, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: timezone
-  }).format(event.start);
+  const eventDates = getEventDates(event);
 
   // Use color indicator from resolved map, fallback to hash if not in map
   const indicator = calendarName && calendarIndicators.has(calendarName)
@@ -506,18 +522,62 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC', cale
 
   let message = '';
 
+  // For recurring events, show recurrence pattern instead of specific date
+  const isRecurring = event.rrule !== null && event.rrule !== undefined;
+  const recurrenceText = isRecurring ? formatRecurrencePattern(event.rrule, locale) : null;
+
   switch (type) {
     case 'new':
-      const newTime = formatEventTime(event, locale, timezone);
-      message = `*Neuer Termin:* ${event.title} · ${dateStr} · ${newTime}${calendar}`;
+      if (isRecurring) {
+        // Show recurrence pattern for recurring events
+        const time = event.isAllDay ? getTranslation(locale, 'allDay') : formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*${getTranslation(locale, 'newEvent')}:* ${event.title} · ${recurrenceText} · ${time}${calendar}`;
+      } else {
+        // Show date for non-recurring events
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const time = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*${getTranslation(locale, 'newEvent')}:* ${event.title} · ${dateStr} · ${time}${calendar}`;
+      }
       break;
 
     case 'deleted':
-      const delTime = formatEventTime(event, locale, timezone);
-      message = `*Termin abgesagt:* ${event.title} · ${dateStr} · ${delTime}${calendar}`;
+      if (isRecurring) {
+        const time = event.isAllDay ? getTranslation(locale, 'allDay') : formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*Termin abgesagt:* ${event.title} · ${recurrenceText} · ${time}${calendar}`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const time = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*Termin abgesagt:* ${event.title} · ${dateStr} · ${time}${calendar}`;
+      }
+      break;
+
+    case 'pattern_changed':
+      // RRULE changed - show old → new pattern
+      const oldPattern = formatRecurrencePattern(old.rrule, locale);
+      const newPattern = formatRecurrencePattern(newData.rrule, locale);
+      const time = event.isAllDay ? getTranslation(locale, 'allDay') : formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+      message = `*Wiederholung geändert:* ${event.title} · ${oldPattern} → ${newPattern} · ${time}${calendar}`;
       break;
 
     case 'time_changed':
+      // Non-recurring event time changed
+      const dateStr = new Intl.DateTimeFormat(locale, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: timezone
+      }).format(eventDates.start);
+
       // Check if all-day status changed
       // Handle legacy cached events that might not have isAllDay flag
       // Infer all-day from midnight start time if flag is missing
@@ -542,8 +602,8 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC', cale
         }
       } else {
         // All-day status unchanged, check date/time changes
-        const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: oldIsAllDay }, locale, timezone);
-        const newTime2 = formatEventTime({ ...event, start: newData.start, isAllDay: newIsAllDay }, locale, timezone);
+        const oldTime = formatEventTime({ ...event, start: old.start, end: old.end, isAllDay: oldIsAllDay }, locale, timezone);
+        const newTime2 = formatEventTime({ ...event, start: newData.start, end: newData.end, isAllDay: newIsAllDay }, locale, timezone);
         const dateChanged = !isSameDay(old.start, newData.start, timezone);
         const timeChanged = oldTime !== newTime2;
 
@@ -565,18 +625,48 @@ function renderChangeNotification(diff, locale = 'en-US', timezone = 'UTC', cale
       break;
 
     case 'title_changed':
-      const titleTime = formatEventTime(event, locale, timezone);
-      message = `*Termin umbenannt:* ${old.title} → ${event.title} · ${dateStr} · ${titleTime}${calendar}`;
+      if (isRecurring) {
+        message = `*Termin umbenannt:* ${old.title} → ${event.title} · ${recurrenceText}${calendar}`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const titleTime = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*Termin umbenannt:* ${old.title} → ${event.title} · ${dateStr} · ${titleTime}${calendar}`;
+      }
       break;
 
     case 'location_changed':
-      const locTime = formatEventTime(event, locale, timezone);
-      message = `*Termin geändert:* ${event.title} · ${dateStr} · ${locTime}${calendar}`;
+      if (isRecurring) {
+        message = `*Termin geändert:* ${event.title} · ${recurrenceText}${calendar}`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const locTime = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*Termin geändert:* ${event.title} · ${dateStr} · ${locTime}${calendar}`;
+      }
       break;
 
     default:
-      const defaultTime = formatEventTime(event, locale, timezone);
-      message = `*Termin geändert:* ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
+      if (isRecurring) {
+        message = `*Termin geändert:* ${event.title} · ${recurrenceText}${calendar}`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const defaultTime = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        message = `*Termin geändert:* ${event.title} · ${dateStr} · ${defaultTime}${calendar}`;
+      }
       break;
   }
 
@@ -617,6 +707,7 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
   const grouped = {
     new: diffs.filter(d => d.type === 'new'),
     deleted: diffs.filter(d => d.type === 'deleted'),
+    patternChanged: diffs.filter(d => d.type === 'pattern_changed'),
     timeChanged: diffs.filter(d => d.type === 'time_changed'),
     titleChanged: diffs.filter(d => d.type === 'title_changed'),
     locationChanged: diffs.filter(d => d.type === 'location_changed')
@@ -628,16 +719,25 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
     output += `*${label}:*\n`;
     for (const diff of grouped.new) {
       const { event, calendarName } = diff;
-      const dateStr = new Intl.DateTimeFormat(locale, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        timeZone: timezone
-      }).format(event.start);
-      const time = formatEventTime(event, locale, timezone);
+      const eventDates = getEventDates(event);
+      const isRecurring = event.rrule !== null;
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
-      output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+
+      if (isRecurring) {
+        const recurrenceText = formatRecurrencePattern(event.rrule, locale);
+        const time = event.isAllDay ? getTranslation(locale, 'allDay') : formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        output += `• ${event.title} · ${recurrenceText} · ${time}${calendar}\n`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const time = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+      }
     }
     output += '\n';
   }
@@ -648,16 +748,40 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
     output += `*${label}:*\n`;
     for (const diff of grouped.deleted) {
       const { event, calendarName } = diff;
-      const dateStr = new Intl.DateTimeFormat(locale, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        timeZone: timezone
-      }).format(event.start);
-      const time = formatEventTime(event, locale, timezone);
+      const eventDates = getEventDates(event);
+      const isRecurring = event.rrule !== null;
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
-      output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+
+      if (isRecurring) {
+        const recurrenceText = formatRecurrencePattern(event.rrule, locale);
+        const time = event.isAllDay ? getTranslation(locale, 'allDay') : formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        output += `• ${event.title} · ${recurrenceText} · ${time}${calendar}\n`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const time = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+      }
+    }
+    output += '\n';
+  }
+
+  // Render pattern-changed events
+  if (grouped.patternChanged.length > 0) {
+    const label = grouped.patternChanged.length === 1 ? 'Wiederholung geändert' : 'Wiederholungen geändert';
+    output += `*${label}:*\n`;
+    for (const diff of grouped.patternChanged) {
+      const { event, old, new: newData, calendarName } = diff;
+      const oldPattern = formatRecurrencePattern(old.rrule, locale);
+      const newPattern = formatRecurrencePattern(newData.rrule, locale);
+      const indicator = calendarIndicators.get(calendarName) || '';
+      const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
+      output += `• ${event.title} · ${oldPattern} → ${newPattern}${calendar}\n`;
     }
     output += '\n';
   }
@@ -668,14 +792,15 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
     output += `*${label}:*\n`;
     for (const diff of grouped.timeChanged) {
       const { event, old, new: newData, calendarName } = diff;
+      const eventDates = getEventDates(event);
       const dateStr = new Intl.DateTimeFormat(locale, {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         timeZone: timezone
-      }).format(event.start);
-      const oldTime = formatEventTime({ ...event, start: old.start, isAllDay: event.isAllDay }, locale, timezone);
-      const newTime = formatEventTime({ ...event, start: newData.start, isAllDay: event.isAllDay }, locale, timezone);
+      }).format(eventDates.start);
+      const oldTime = formatEventTime({ ...event, start: old.start, end: old.end, isAllDay: event.isAllDay }, locale, timezone);
+      const newTime = formatEventTime({ ...event, start: newData.start, end: newData.end, isAllDay: event.isAllDay }, locale, timezone);
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
 
@@ -706,16 +831,24 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
     output += `*${label}:*\n`;
     for (const diff of grouped.titleChanged) {
       const { event, old, calendarName } = diff;
-      const dateStr = new Intl.DateTimeFormat(locale, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        timeZone: timezone
-      }).format(event.start);
-      const time = formatEventTime(event, locale, timezone);
+      const eventDates = getEventDates(event);
+      const isRecurring = event.rrule !== null;
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
-      output += `• ${old.title} → ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+
+      if (isRecurring) {
+        const recurrenceText = formatRecurrencePattern(event.rrule, locale);
+        output += `• ${old.title} → ${event.title} · ${recurrenceText}${calendar}\n`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const time = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        output += `• ${old.title} → ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+      }
     }
     output += '\n';
   }
@@ -726,16 +859,24 @@ async function renderBundledNotification(diffs, locale = 'en-US', timezone = 'UT
     output += `*${label}:*\n`;
     for (const diff of grouped.locationChanged) {
       const { event, calendarName } = diff;
-      const dateStr = new Intl.DateTimeFormat(locale, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        timeZone: timezone
-      }).format(event.start);
-      const time = formatEventTime(event, locale, timezone);
+      const eventDates = getEventDates(event);
+      const isRecurring = event.rrule !== null;
       const indicator = calendarIndicators.get(calendarName) || '';
       const calendar = indicator ? ` ${indicator}` : (calendarName ? ` · ${calendarName}` : '');
-      output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+
+      if (isRecurring) {
+        const recurrenceText = formatRecurrencePattern(event.rrule, locale);
+        output += `• ${event.title} · ${recurrenceText}${calendar}\n`;
+      } else {
+        const dateStr = new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: timezone
+        }).format(eventDates.start);
+        const time = formatEventTime({ ...event, start: eventDates.start, end: eventDates.end }, locale, timezone);
+        output += `• ${event.title} · ${dateStr} · ${time}${calendar}\n`;
+      }
     }
   }
 
