@@ -7,7 +7,8 @@ const {
   renderBundledNotification,
   renderCanvasContent,
   formatEventTime,
-  renderCalendarLegend
+  renderCalendarLegend,
+  formatRecurrencePattern
 } = require('../src/formatting.js');
 
 test('formatEventTime should format time based on locale', () => {
@@ -890,4 +891,61 @@ test('renderDailyView creates clickable Canvas link when canvas_url provided', a
   const result = await renderDailyView(events, dateRange, 'de-DE', { canvas_url });
 
   assert.ok(result.includes(`<${canvas_url}|Komplette Übersicht →>`), 'Should have clickable Canvas link with German text');
+});
+
+test('formatRecurrencePattern should format daily pattern', () => {
+  const result = formatRecurrencePattern('FREQ=DAILY', 'de-DE');
+  assert.strictEqual(result, 'Täglich');
+});
+
+test('formatRecurrencePattern should format weekly pattern with single day', () => {
+  const result = formatRecurrencePattern('FREQ=WEEKLY;BYDAY=MO', 'de-DE');
+  assert.strictEqual(result, 'Wöchentlich, Mo.');
+});
+
+test('formatRecurrencePattern should format weekly pattern with multiple days', () => {
+  const result = formatRecurrencePattern('FREQ=WEEKLY;BYDAY=MO,WE,FR', 'de-DE');
+  assert.strictEqual(result, 'Wöchentlich, Mo., Mi., Fr.');
+});
+
+test('formatRecurrencePattern should format monthly pattern with day', () => {
+  const result = formatRecurrencePattern('FREQ=MONTHLY;BYMONTHDAY=15', 'de-DE');
+  assert.strictEqual(result, 'Monatlich, 15.');
+});
+
+test('formatRecurrencePattern should format yearly pattern', () => {
+  const result = formatRecurrencePattern('FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=24', 'de-DE');
+  assert.strictEqual(result, 'Jährlich, 24. Dez.');
+});
+
+test('formatRecurrencePattern should format interval patterns', () => {
+  assert.strictEqual(formatRecurrencePattern('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO', 'de-DE'), 'Alle 2 Wochen, Mo.');
+  assert.strictEqual(formatRecurrencePattern('FREQ=DAILY;INTERVAL=3', 'de-DE'), 'Alle 3 Tage');
+  assert.strictEqual(formatRecurrencePattern('FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=1', 'de-DE'), 'Alle 2 Monate, 1.');
+});
+
+test('formatRecurrencePattern should format positional patterns', () => {
+  assert.strictEqual(formatRecurrencePattern('FREQ=MONTHLY;BYDAY=2MO', 'de-DE'), 'Monatlich, 2. Mo.');
+  assert.strictEqual(formatRecurrencePattern('FREQ=MONTHLY;BYDAY=-1FR', 'de-DE'), 'Monatlich, letzter Fr.');
+  assert.strictEqual(formatRecurrencePattern('FREQ=YEARLY;BYMONTH=11;BYDAY=4TH', 'de-DE'), 'Jährlich, 4. Do. im Nov.');
+});
+
+test('formatRecurrencePattern should format patterns with COUNT', () => {
+  const result = formatRecurrencePattern('FREQ=WEEKLY;BYDAY=TH;COUNT=10', 'de-DE');
+  assert.strictEqual(result, 'Wöchentlich, Do. (10×)');
+});
+
+test('formatRecurrencePattern should format patterns with UNTIL', () => {
+  const result = formatRecurrencePattern('FREQ=DAILY;UNTIL=20260430T000000Z', 'de-DE');
+  assert.strictEqual(result, 'Täglich (bis 30. Apr. 2026)');
+});
+
+test('formatRecurrencePattern should handle invalid RRULE gracefully', () => {
+  const result = formatRecurrencePattern('INVALID', 'de-DE');
+  assert.strictEqual(result, 'Wiederholend');
+});
+
+test('formatRecurrencePattern should return null for null input', () => {
+  const result = formatRecurrencePattern(null, 'de-DE');
+  assert.strictEqual(result, null);
 });

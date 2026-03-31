@@ -5,6 +5,139 @@
 const { CALENDAR_INDICATORS, hashCalendarName, getCalendarColor, createColorCacheObject } = require('./calendar-colors');
 
 /**
+ * Parse RRULE string into components
+ * @param {string} rrule - RRULE string
+ * @returns {Object} Parsed components
+ */
+function parseRRule(rrule) {
+  if (!rrule) return null;
+
+  const parts = rrule.split(';');
+  const parsed = {};
+
+  for (const part of parts) {
+    const [key, value] = part.split('=');
+    parsed[key] = value;
+  }
+
+  return parsed;
+}
+
+/**
+ * Format recurrence pattern as human-readable German text
+ * @param {string|null} rrule - RRULE string (e.g., "FREQ=WEEKLY;BYDAY=MO,WE")
+ * @param {string} locale - Locale (currently only de-DE supported)
+ * @returns {string|null} Human-readable recurrence pattern
+ */
+function formatRecurrencePattern(rrule, locale = 'de-DE') {
+  if (!rrule) return null;
+
+  try {
+    const parsed = parseRRule(rrule);
+    if (!parsed || !parsed.FREQ) {
+      return 'Wiederholend'; // Fallback for invalid RRULE
+    }
+
+    const freq = parsed.FREQ;
+    const interval = parseInt(parsed.INTERVAL || '1', 10);
+    const byDay = parsed.BYDAY;
+    const byMonthDay = parsed.BYMONTHDAY;
+    const byMonth = parsed.BYMONTH;
+    const count = parsed.COUNT;
+    const until = parsed.UNTIL;
+
+    // Day abbreviations mapping (de-DE)
+    const dayMap = {
+      'MO': 'Mo.', 'TU': 'Di.', 'WE': 'Mi.', 'TH': 'Do.',
+      'FR': 'Fr.', 'SA': 'Sa.', 'SU': 'So.'
+    };
+
+    // Month abbreviations mapping (de-DE)
+    const monthMap = {
+      '1': 'Jan.', '2': 'Feb.', '3': 'März', '4': 'Apr.',
+      '5': 'Mai', '6': 'Juni', '7': 'Juli', '8': 'Aug.',
+      '9': 'Sept.', '10': 'Okt.', '11': 'Nov.', '12': 'Dez.'
+    };
+
+    let base = '';
+    let details = '';
+
+    // Build base frequency text
+    if (freq === 'DAILY') {
+      base = interval === 1 ? 'Täglich' : `Alle ${interval} Tage`;
+    } else if (freq === 'WEEKLY') {
+      base = interval === 1 ? 'Wöchentlich' : `Alle ${interval} Wochen`;
+    } else if (freq === 'MONTHLY') {
+      base = interval === 1 ? 'Monatlich' : `Alle ${interval} Monate`;
+    } else if (freq === 'YEARLY') {
+      base = interval === 1 ? 'Jährlich' : `Alle ${interval} Jahre`;
+    } else {
+      return 'Wiederholend';
+    }
+
+    // Add day/date details
+    if (byDay) {
+      // Check for positional patterns (e.g., "2MO" = 2nd Monday)
+      const positionalMatch = byDay.match(/^(-?\d+)([A-Z]{2})$/);
+      if (positionalMatch) {
+        const [, position, day] = positionalMatch;
+        const posText = position === '-1' ? 'letzter' : `${position}.`;
+        details = `${posText} ${dayMap[day] || day}`;
+      } else {
+        // Multiple days (e.g., "MO,WE,FR")
+        const days = byDay.split(',').map(d => dayMap[d] || d);
+        details = days.join(', ');
+      }
+    } else if (byMonthDay) {
+      details = `${byMonthDay}.`;
+    }
+
+    // Add month for yearly patterns
+    if (freq === 'YEARLY' && byMonth) {
+      const monthName = monthMap[byMonth] || byMonth;
+      if (byDay) {
+        const positionalMatch = byDay.match(/^(-?\d+)([A-Z]{2})$/);
+        if (positionalMatch) {
+          const [, position, day] = positionalMatch;
+          const posText = position === '-1' ? 'letzter' : `${position}.`;
+          details = `${posText} ${dayMap[day] || day} im ${monthName}`;
+        }
+      } else if (byMonthDay) {
+        details = `${byMonthDay}. ${monthName}`;
+      } else {
+        details = monthName;
+      }
+    }
+
+    // Build result
+    let result = details ? `${base}, ${details}` : base;
+
+    // Add end condition
+    if (count) {
+      result += ` (${count}×)`;
+    } else if (until) {
+      // Parse UNTIL date (format: YYYYMMDDTHHMMSSZ)
+      const match = until.match(/^(\d{4})(\d{2})(\d{2})/);
+      if (match) {
+        const [, year, month, day] = match;
+        const untilDate = new Date(`${year}-${month}-${day}`);
+        const formatted = new Intl.DateTimeFormat(locale, {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        }).format(untilDate);
+        result += ` (bis ${formatted})`;
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.warn('Failed to parse RRULE:', rrule, error.message);
+    return 'Wiederholend';
+  }
+}
+
+/**
  * Locale-specific translations
  */
 const TRANSLATIONS = {
@@ -824,5 +957,6 @@ module.exports = {
   renderBundledNotification,
   renderDailyView,
   renderCanvasContent,
-  renderCalendarLegend
+  renderCalendarLegend,
+  formatRecurrencePattern
 };
