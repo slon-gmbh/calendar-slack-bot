@@ -1268,82 +1268,106 @@ Expected: FAIL - digest rendering doesn't expand instances yet
 
 - [ ] **Step 6.3: Update renderWeekView to expand instances**
 
-In `src/formatting.js`, update `renderWeekView` to flatten instances:
+In `src/formatting.js`, add flattening logic after line 243 (after calendar indicators assignment):
 
+Find this code (around line 243):
 ```javascript
-async function renderWeekView(events, dateRange, locale = 'en-US', options = {}) {
-  // ... existing setup code ...
+  // Assign calendar indicators (only if multiple calendars)
+  const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(events, config, cacheMap);
+```
 
+Add immediately after it:
+```javascript
   // Flatten events to instances for display
   const flattenedEvents = [];
   for (const event of events) {
     for (const instance of event.instances) {
       flattenedEvents.push({
-        ...event,
+        id: event.id,
+        title: event.title,
+        location: event.location,
+        description: event.description,
+        isAllDay: event.isAllDay,
+        rrule: event.rrule,
         start: instance.start,
         end: instance.end,
-        isException: instance.isException
-        // Keep other event properties (title, location, etc.)
+        calendarName: event.calendarName
       });
     }
   }
-
-  // Rest of function works with flattenedEvents instead of events
-  // ... existing rendering logic ...
-}
 ```
+
+Then replace all remaining occurrences of `events` with `flattenedEvents` in the function:
+- Line 256: `for (const event of flattenedEvents)` (was: `for (const event of events)`)
+- Line 302: `const totalEvents = flattenedEvents.length;` (was: `const totalEvents = events.length;`)
+- Line 303: `const uniqueCalendars = new Set(flattenedEvents.map(e => e.calendarName).filter(Boolean)).size;` (was: `events.map`)
 
 - [ ] **Step 6.4: Update renderDailyView to expand instances**
 
-In `src/formatting.js`, update `renderDailyView` similarly:
+In `src/formatting.js`, add flattening logic after line 609 (after calendar indicators assignment):
 
+Find this code (around line 609):
 ```javascript
-async function renderDailyView(events, dateRange, locale = 'en-US', options = {}) {
-  // ... existing setup code ...
+  // Assign calendar indicators
+  const { indicatorMap: calendarIndicators } = await assignCalendarIndicators(events, config, cacheMap);
+```
 
+Add immediately after it:
+```javascript
   // Flatten events to instances for display
   const flattenedEvents = [];
   for (const event of events) {
     for (const instance of event.instances) {
       flattenedEvents.push({
-        ...event,
+        id: event.id,
+        title: event.title,
+        location: event.location,
+        description: event.description,
+        isAllDay: event.isAllDay,
+        rrule: event.rrule,
         start: instance.start,
         end: instance.end,
-        isException: instance.isException
+        calendarName: event.calendarName
       });
     }
   }
-
-  // Rest of function works with flattenedEvents
-  // ... existing rendering logic ...
-}
 ```
+
+Then replace the occurrence of `events` with `flattenedEvents`:
+- Line 628: `for (const event of flattenedEvents)` (was: `for (const event of events)`)
 
 - [ ] **Step 6.5: Update renderCanvasContent to expand instances**
 
-In `src/formatting.js`, update `renderCanvasContent`:
+In `src/formatting.js`, add flattening logic after line 768 (after dateRange calculation):
 
+Find this code (around line 768):
 ```javascript
-async function renderCanvasContent(events, options = {}) {
-  // ... existing setup code ...
+  const dateRange = { start: startOfWeek, end: endOfWeek };
+```
 
+Add immediately after it:
+```javascript
   // Flatten events to instances for display
   const flattenedEvents = [];
   for (const event of events) {
     for (const instance of event.instances) {
       flattenedEvents.push({
-        ...event,
+        id: event.id,
+        title: event.title,
+        location: event.location,
+        description: event.description,
+        isAllDay: event.isAllDay,
+        rrule: event.rrule,
         start: instance.start,
         end: instance.end,
-        isException: instance.isException
+        calendarName: event.calendarName
       });
     }
   }
-
-  // Rest of function works with flattenedEvents
-  // ... existing rendering logic ...
-}
 ```
+
+Then replace the occurrence of `events` with `flattenedEvents`:
+- Line 771: `const weekEvents = flattenedEvents.filter(e => {` (was: `const weekEvents = events.filter(e => {`)
 
 - [ ] **Step 6.6: Run tests to verify they pass**
 
