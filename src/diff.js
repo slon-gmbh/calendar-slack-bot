@@ -64,11 +64,18 @@ function diffEvents(previous, current) {
  * Works with both recurring (with rrule) and non-recurring events
  */
 function detectChanges(oldEvent, newEvent) {
+  // Validate instances array exists
+  if (!oldEvent.instances?.length || !newEvent.instances?.length) {
+    console.warn(`[DIFF] Event missing instances array: "${newEvent.title || oldEvent.title}"`);
+    return null;
+  }
+
   // For recurring events, compare RRULE instead of individual instance timestamps
   if (oldEvent.rrule || newEvent.rrule) {
     // If RRULE changed or appeared/disappeared, that's a pattern change
     if (oldEvent.rrule !== newEvent.rrule) {
       console.log(`[DIFF] Recurrence pattern changed for "${newEvent.title}"`);
+      // TODO: Task 4 will add formatting support for pattern_changed type
       return {
         type: 'pattern_changed',
         event: newEvent,
