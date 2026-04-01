@@ -5,6 +5,10 @@ node_modules/
 config.json
 .env
 
+# Debug output
+.caldav-debug/
+canvas.png
+
 # Logs
 *.log
 npm-debug.log*

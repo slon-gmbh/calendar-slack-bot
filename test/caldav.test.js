@@ -230,3 +230,33 @@ test('normalizeEvent should return composite structure for recurring event', () 
   assert.strictEqual(result.instances.length, 1);
   assert.strictEqual(result.instances[0].isException, false);
 });
+
+test('normalizeEvent should convert Europe/Berlin timezone to UTC correctly (issue #16)', () => {
+  // Simulate node-ical parsing DTSTART;TZID=Europe/Berlin:20260415T110000
+  // When node-ical doesn't attach .tz property, the Date object has UTC components
+  // set to the local time values (11:00 becomes getUTCHours() = 11)
+  const berlinLocalTime = new Date(Date.UTC(2026, 3, 15, 11, 0, 0)); // April 15, 2026, 11:00 (as UTC components)
+  // Remove .tz property to simulate node-ical's inconsistent behavior
+  delete berlinLocalTime.tz;
+
+  const icalEvent = {
+    uid: 'test-berlin-event',
+    summary: 'EG | Eurythmie (mit Friederike)',
+    start: berlinLocalTime,
+    end: new Date(Date.UTC(2026, 3, 15, 12, 0, 0)),
+    datetype: 'date-time',
+    rrule: null
+  };
+
+  const result = normalizeEvent(icalEvent, null, 'Europe/Berlin');
+
+  // Event at 11:00 Berlin time in April (CEST = UTC+2)
+  // Should be stored as 09:00 UTC (11:00 - 2:00)
+  const expectedStart = new Date('2026-04-15T09:00:00.000Z');
+  const expectedEnd = new Date('2026-04-15T10:00:00.000Z');
+
+  assert.strictEqual(result.instances[0].start.toISOString(), expectedStart.toISOString(),
+    'Start time should be 09:00 UTC (11:00 Berlin - 2h CEST offset)');
+  assert.strictEqual(result.instances[0].end.toISOString(), expectedEnd.toISOString(),
+    'End time should be 10:00 UTC (12:00 Berlin - 2h CEST offset)');
+});

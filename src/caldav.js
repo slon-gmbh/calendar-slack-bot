@@ -163,7 +163,9 @@ function convertToUTC(date, defaultTimezone) {
   }
 
   // Debug logging for offset calculation (#7)
-  const resultUTC = new Date(Date.UTC(year, month, day, hours, minutes, seconds, ms) + offsetMinutes * 60000);
+  // Convert from local time to UTC by SUBTRACTING the offset
+  // E.g., 11:00 Berlin (UTC+2) → 11:00 - 2:00 = 09:00 UTC
+  const resultUTC = new Date(Date.UTC(year, month, day, hours, minutes, seconds, ms) - offsetMinutes * 60000);
   console.log(`[TZ-CONVERT] Input=${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}T${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}, TZ=${defaultTimezone}, Offset=${offsetStr} (${offsetMinutes}min), Result=${resultUTC.toISOString()}`);
 
   // Add the offset to get proper UTC
