@@ -338,3 +338,104 @@ test('diffEvents should handle single-instance events with instances array (comp
   assert.strictEqual(diffs[0].type, 'new');
   assert.strictEqual(diffs[0].event.id, 'single-123');
 });
+
+test('diffEvents should NOT detect change when RRULE has malformed DTSTART prefix (issue #16)', () => {
+  // Bug: Old cache has RRULE with DTSTART prefix, new cache has clean RRULE
+  // This causes false positive change detection
+  const previous = [{
+    id: 'recurring-eurythmie',
+    title: 'EG | Eurythmie (mit Friederike)',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'DTSTART;TZID=Europe/Berlin:20260114T100000\nRRULE:FREQ=WEEKLY;BYDAY=WE;UNTIL=20260708T090000',
+    instances: [
+      { start: new Date('2026-04-15T10:00:00Z'), end: new Date('2026-04-15T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const current = [{
+    id: 'recurring-eurythmie',
+    title: 'EG | Eurythmie (mit Friederike)',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=WE;UNTIL=20260708T090000',
+    instances: [
+      { start: new Date('2026-04-15T10:00:00Z'), end: new Date('2026-04-15T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const diffs = diffEvents(previous, current);
+
+  // Should detect NO changes - both RRULEs represent same pattern
+  assert.strictEqual(diffs.length, 0, 'Malformed RRULE with DTSTART prefix should normalize to same pattern');
+});
+
+test('diffEvents should detect REAL RRULE pattern changes (issue #16)', () => {
+  // Ensure we still detect actual pattern changes
+  const previous = [{
+    id: 'recurring-meeting',
+    title: 'Weekly Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    instances: [
+      { start: new Date('2026-04-14T10:00:00Z'), end: new Date('2026-04-14T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const current = [{
+    id: 'recurring-meeting',
+    title: 'Weekly Meeting',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'FREQ=WEEKLY;BYDAY=WE',
+    instances: [
+      { start: new Date('2026-04-16T10:00:00Z'), end: new Date('2026-04-16T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const diffs = diffEvents(previous, current);
+
+  // Should detect pattern change: Monday → Wednesday
+  assert.strictEqual(diffs.length, 1);
+  assert.strictEqual(diffs[0].type, 'pattern_changed');
+  assert.strictEqual(diffs[0].old.rrule, 'FREQ=WEEKLY;BYDAY=MO');
+  assert.strictEqual(diffs[0].new.rrule, 'FREQ=WEEKLY;BYDAY=WE');
+});
+
+test('diffEvents should handle malformed RRULE in both old and new (issue #16)', () => {
+  // Edge case: both have malformed format
+  const previous = [{
+    id: 'recurring-event',
+    title: 'Test Event',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'DTSTART;TZID=Europe/Berlin:20260114T100000\nRRULE:FREQ=DAILY',
+    instances: [
+      { start: new Date('2026-04-15T10:00:00Z'), end: new Date('2026-04-15T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const current = [{
+    id: 'recurring-event',
+    title: 'Test Event',
+    location: null,
+    description: null,
+    isAllDay: false,
+    rrule: 'DTSTART;TZID=Europe/Berlin:20260115T100000\nRRULE:FREQ=DAILY',
+    instances: [
+      { start: new Date('2026-04-15T10:00:00Z'), end: new Date('2026-04-15T11:00:00Z'), isException: false }
+    ]
+  }];
+
+  const diffs = diffEvents(previous, current);
+
+  // Should detect NO changes - RRULE pattern is the same (FREQ=DAILY)
+  // DTSTART difference should be ignored
+  assert.strictEqual(diffs.length, 0, 'Both malformed RRULEs should normalize to same pattern');
+});

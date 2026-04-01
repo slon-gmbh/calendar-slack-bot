@@ -48,13 +48,24 @@ function parsePositionalDay(byDay, dayMap) {
 function formatRecurrencePattern(rrule, locale = 'de-DE') {
   if (!rrule) return null;
 
+  // Normalize RRULE to handle malformed format with DTSTART prefix (issue #16)
+  let normalizedRRule = rrule;
+  if (rrule.includes('\n')) {
+    const rruleLine = rrule.split('\n').find(line => line.startsWith('RRULE:'));
+    if (rruleLine) {
+      normalizedRRule = rruleLine.substring(6); // Skip "RRULE:" prefix
+    }
+  } else if (rrule.startsWith('RRULE:')) {
+    normalizedRRule = rrule.substring(6);
+  }
+
   // Currently only de-DE supported
   if (locale !== 'de-DE') {
     console.warn(`formatRecurrencePattern: Unsupported locale "${locale}", falling back to de-DE`);
   }
 
   try {
-    const parsed = parseRRule(rrule);
+    const parsed = parseRRule(normalizedRRule);
     if (!parsed || !parsed.FREQ) {
       console.warn(`[RRULE] Failed to parse RRULE (no FREQ): "${rrule}"`);
       return 'Wiederholend'; // Fallback for invalid RRULE

@@ -945,6 +945,13 @@ test('formatRecurrencePattern should handle invalid RRULE gracefully', () => {
   assert.strictEqual(result, 'Wiederholend');
 });
 
+test('formatRecurrencePattern should normalize malformed RRULE with DTSTART prefix (issue #16)', () => {
+  // Old cache format from rrule.toString() includes DTSTART line
+  const malformedRRule = 'DTSTART;TZID=Europe/Berlin:20260114T100000\nRRULE:FREQ=WEEKLY;BYDAY=WE';
+  const result = formatRecurrencePattern(malformedRRule, 'de-DE');
+  assert.strictEqual(result, 'Wöchentlich, Mi.');
+});
+
 test('formatRecurrencePattern should return null for null input', () => {
   const result = formatRecurrencePattern(null, 'de-DE');
   assert.strictEqual(result, null);

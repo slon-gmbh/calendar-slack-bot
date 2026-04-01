@@ -60,6 +60,32 @@ function diffEvents(previous, current) {
 }
 
 /**
+ * Normalize RRULE string by extracting just the RRULE part
+ * Handles malformed RRULEs with DTSTART prefix from older cache format
+ * @param {string|null} rrule - Raw RRULE string (may contain DTSTART prefix)
+ * @returns {string|null} Normalized RRULE or null
+ */
+function normalizeRRule(rrule) {
+  if (!rrule) return null;
+
+  // If RRULE contains newlines, extract the RRULE line
+  if (rrule.includes('\n')) {
+    const rruleLine = rrule.split('\n').find(line => line.startsWith('RRULE:'));
+    if (rruleLine) {
+      return rruleLine.substring(6); // Skip "RRULE:" prefix
+    }
+  }
+
+  // If already starts with RRULE:, strip the prefix
+  if (rrule.startsWith('RRULE:')) {
+    return rrule.substring(6);
+  }
+
+  // Already normalized (starts with FREQ=)
+  return rrule;
+}
+
+/**
  * Detect specific changes between two events (composite structure)
  * Works with both recurring (with rrule) and non-recurring events
  */
@@ -72,8 +98,12 @@ function detectChanges(oldEvent, newEvent) {
 
   // For recurring events, compare RRULE instead of individual instance timestamps
   if (oldEvent.rrule || newEvent.rrule) {
+    // Normalize RRULEs before comparing (handles malformed DTSTART prefix)
+    const normalizedOld = normalizeRRule(oldEvent.rrule);
+    const normalizedNew = normalizeRRule(newEvent.rrule);
+
     // If RRULE changed or appeared/disappeared, that's a pattern change
-    if (oldEvent.rrule !== newEvent.rrule) {
+    if (normalizedOld !== normalizedNew) {
       console.log(`[DIFF] Recurrence pattern changed for "${newEvent.title}"`);
       // TODO: Task 4 will add formatting support for pattern_changed type
       return {
@@ -288,6 +318,7 @@ async function savePendingNotifications(channelId, diffs) {
 
 module.exports = {
   diffEvents,
+  normalizeRRule,
   loadCachedEvents,
   saveCachedEvents,
   loadPendingNotifications,
