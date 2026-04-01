@@ -91,70 +91,8 @@ function shouldPostErrorNotification(calendarId, errorMessage, cachedData) {
 }
 
 /**
- * Route detected diffs to subscribed channels (polling mode - no debounce)
- * @param {Object} config - Bot configuration
- * @param {string} calendarId - Calendar identifier
- * @param {Array} diffsWithCalendar - Diffs with calendar name attached
- * @param {boolean} dryRun - Dry run mode flag
- * @returns {Promise<Map>} Map of channel ID to calendar name (for tracking which calendars posted to each channel)
- */
-async function routeChangeDetectionDiffs(config, calendarId, diffsWithCalendar, dryRun) {
-  const channelCalendarMap = new Map();
-  const cacheMap = await buildCacheMap(config);
-  const { loadCacheState, saveCacheState } = require('./cache.js');
-  const cacheDir = process.env.CACHE_DIR;
-
-  for (const channel of config.channels) {
-    // Check if channel subscribes to this calendar
-    if (!channel.calendars.includes(calendarId)) {
-      continue;
-    }
-
-    // Filter diffs by notification settings
-    const notifiableDiffs = diffsWithCalendar.filter(diff =>
-      shouldNotifyNow(diff, channel)
-    );
-
-    if (notifiableDiffs.length === 0) {
-      console.log(`Change detected for calendar ${calendarId} but channel ${channel.id} has notifications filtered - skipping`);
-      continue;
-    }
-
-    // Post bundled notification (polling mode - no debounce)
-    const locale = channel.locale || config.locale;
-    const timezone = channel.timezone || config.timezone || 'UTC';
-    const { message: notification, newColors } = await renderBundledNotification(notifiableDiffs, locale, timezone, { config, cacheMap });
-
-    console.log(`Posting ${notifiableDiffs.length} change(s) to channel ${channel.id}`);
-    await postMessage(channel.id, notification, dryRun, config.error_channel);
-
-    // Persist fetched colors to cache
-    if (newColors && cacheDir) {
-      for (const [calId, colorCache] of newColors.entries()) {
-        try {
-          const cached = await loadCacheState(calId, cacheDir);
-          if (cached) {
-            await saveCacheState(calId, cached.events, null, cacheDir, colorCache);
-          }
-        } catch (error) {
-          console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
-        }
-      }
-    }
-
-    // Track that this calendar posted to this channel
-    const calendarName = diffsWithCalendar[0]?.calendarName;
-    if (calendarName) {
-      channelCalendarMap.set(channel.id, calendarName);
-    }
-  }
-
-  return channelCalendarMap;
-}
-
-/**
  * Run change detection polling
- * Fetch all calendars, diff against cache, post bundled notifications
+ * Fetch all calendars, diff against cache, collect diffs per channel, then post consolidated notifications
  * @param {Object} config - Bot configuration
  * @param {boolean} dryRun - Dry run mode flag
  * @returns {Promise<void>}
@@ -175,8 +113,8 @@ async function runChangeDetection(config, dryRun) {
   // Build cache map for color indicator assignment
   const cacheMap = await buildCacheMap(config);
 
-  // Track which calendars posted to which channels
-  const channelCalendars = new Map(); // channelId -> Set of calendar names
+  // Collect all diffs per channel: Map<channelId, Array<{calendarId, calendarName, diffs}>>
+  const channelDiffsMap = new Map();
 
   // Process each calendar
   for (const calId of Object.keys(config.calendars)) {
@@ -220,16 +158,34 @@ async function runChangeDetection(config, dryRun) {
       // Add calendar name to diffs
       const diffsWithCalendar = diffs.map(d => ({ ...d, calendarName: calendar.name }));
 
-      // Route to channels and collect which channels got messages
-      const channelCalendarMap = await routeChangeDetectionDiffs(config, calId, diffsWithCalendar, dryRun);
-
-      // Track calendars per channel
-      for (const [channelId, calendarName] of channelCalendarMap) {
-        if (!channelCalendars.has(channelId)) {
-          channelCalendars.set(channelId, new Set());
+      // Collect diffs for each subscribed channel
+      for (const channel of config.channels) {
+        // Check if channel subscribes to this calendar
+        if (!channel.calendars.includes(calId)) {
+          continue;
         }
-        channelCalendars.get(channelId).add(calendarName);
-        console.log(`[Legend Tracking] Added "${calendarName}" to channel ${channelId} (now has: ${Array.from(channelCalendars.get(channelId)).join(', ')})`);
+
+        // Filter diffs by notification settings
+        const notifiableDiffs = diffsWithCalendar.filter(diff =>
+          shouldNotifyNow(diff, channel)
+        );
+
+        if (notifiableDiffs.length === 0) {
+          console.log(`Change detected for calendar ${calId} but channel ${channel.id} has notifications filtered - skipping`);
+          continue;
+        }
+
+        // Add to collection
+        if (!channelDiffsMap.has(channel.id)) {
+          channelDiffsMap.set(channel.id, []);
+        }
+        channelDiffsMap.get(channel.id).push({
+          calendarId: calId,
+          calendarName: calendar.name,
+          diffs: notifiableDiffs
+        });
+
+        console.log(`Collected ${notifiableDiffs.length} diff(s) for channel ${channel.id} from calendar ${calendar.name}`);
       }
 
       // Update cache (clear any previous error state)
@@ -261,22 +217,100 @@ async function runChangeDetection(config, dryRun) {
     }
   }
 
-  // Post calendar legends for channels that had changes from multiple calendars
-  for (const [channelId, calendars] of channelCalendars) {
-    console.log(`[Legend] Channel ${channelId} has ${calendars.size} calendar(s): ${Array.from(calendars).join(', ')}`);
-    if (calendars.size > 1) {
-      // Get color indicators using same logic as change notifications
-      const { assignCalendarIndicators } = require('./formatting.js');
-      const dummyEvents = Array.from(calendars).map(name => ({ calendarName: name }));
-      const { indicatorMap } = await assignCalendarIndicators(dummyEvents, config, cacheMap);
-
-      const legend = renderCalendarLegend(Array.from(calendars).sort(), indicatorMap);
-      console.log(`Posting calendar legend to channel ${channelId} (${calendars.size} calendars): ${legend}`);
-      await postMessage(channelId, legend, dryRun, config.error_channel);
-    }
-  }
+  // Bundle and post consolidated messages per channel
+  await bundleAndPostChangeDetections(config, channelDiffsMap, cacheMap, dryRun);
 
   console.log('Change detection complete');
+}
+
+/**
+ * Bundle and post consolidated change detection messages per channel
+ * Implements smart legend logic: single calendar in title, multiple calendars with legend
+ * @param {Object} config - Bot configuration
+ * @param {Map} channelDiffsMap - Map of channelId to Array of {calendarId, calendarName, diffs}
+ * @param {Map} cacheMap - Cache map for color assignment
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
+ */
+async function bundleAndPostChangeDetections(config, channelDiffsMap, cacheMap, dryRun) {
+  const { loadCacheState, saveCacheState } = require('./cache.js');
+  const cacheDir = process.env.CACHE_DIR;
+
+  for (const [channelId, calendarDiffsArray] of channelDiffsMap) {
+    // Find the channel config
+    const channel = config.channels.find(ch => ch.id === channelId);
+    if (!channel) {
+      console.warn(`Channel ${channelId} not found in config, skipping`);
+      continue;
+    }
+
+    // Flatten all diffs from all calendars
+    const allDiffs = calendarDiffsArray.flatMap(cd => cd.diffs);
+    const uniqueCalendars = new Set(calendarDiffsArray.map(cd => cd.calendarName));
+
+    console.log(`Bundling ${allDiffs.length} diff(s) from ${uniqueCalendars.size} calendar(s) for channel ${channelId}`);
+
+    // Render bundled notification
+    const locale = channel.locale || config.locale;
+    const timezone = channel.timezone || config.timezone || 'UTC';
+    const { message: baseNotification, newColors } = await renderBundledNotification(
+      allDiffs,
+      locale,
+      timezone,
+      { config, cacheMap }
+    );
+
+    // Get calendar indicators for legend
+    const { assignCalendarIndicators } = require('./formatting.js');
+    const dummyEvents = Array.from(uniqueCalendars).map(name => ({ calendarName: name }));
+    const { indicatorMap } = await assignCalendarIndicators(dummyEvents, config, cacheMap);
+
+    let finalMessage = baseNotification;
+
+    // Smart legend logic
+    if (uniqueCalendars.size === 1) {
+      // Single calendar: add calendar name + color to title
+      const calendarName = Array.from(uniqueCalendars)[0];
+      const indicator = indicatorMap.get(calendarName) || '';
+
+      // Replace the title line with calendar-specific title
+      // Handle both single change and multiple changes cases
+      if (allDiffs.length === 1) {
+        // Single change - the message doesn't have a numeric header
+        // Title format varies by change type, so we'll add calendar info at the end
+        finalMessage = baseNotification.trim() + ` · ${calendarName} ${indicator}`;
+      } else {
+        // Multiple changes - has header like "*5 calendar changes*"
+        // Replace generic header with calendar-specific one
+        const changeCount = allDiffs.length;
+        const changesText = locale === 'de-DE' ? 'Änderungen' : 'changes';
+        const newTitle = `*${changeCount} ${changesText} in ${calendarName} ${indicator}*`;
+        finalMessage = baseNotification.replace(/^\*\d+ [^\*]+\*/, newTitle);
+      }
+    } else {
+      // Multiple calendars: append legend to message
+      const legend = renderCalendarLegend(Array.from(uniqueCalendars).sort(), indicatorMap);
+      finalMessage = baseNotification.trim() + '\n\n' + legend;
+    }
+
+    // Post consolidated message
+    console.log(`Posting consolidated message to channel ${channelId} (${uniqueCalendars.size} calendar(s), ${allDiffs.length} diff(s))`);
+    await postMessage(channelId, finalMessage, dryRun, config.error_channel);
+
+    // Persist fetched colors to cache
+    if (newColors && cacheDir) {
+      for (const [calId, colorCache] of newColors.entries()) {
+        try {
+          const cached = await loadCacheState(calId, cacheDir);
+          if (cached) {
+            await saveCacheState(calId, cached.events, null, cacheDir, colorCache);
+          }
+        } catch (error) {
+          console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
+        }
+      }
+    }
+  }
 }
 
 /**
