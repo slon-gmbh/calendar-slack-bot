@@ -1115,10 +1115,9 @@ function convertToCanvasMarkdown(text) {
  * @returns {Promise<string>} Canvas markdown
  */
 async function renderCanvasContent(events, options = {}) {
-  const { locale = 'en-US' } = options;
+  const { locale = 'en-US', now = new Date() } = options;
 
   // Get current/upcoming week range (same logic as getCurrentWeekRange)
-  const now = new Date();
   const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   const startOfWeek = new Date(now);
 
