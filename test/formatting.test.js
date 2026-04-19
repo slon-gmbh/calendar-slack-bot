@@ -210,7 +210,8 @@ test('renderDailyView should use Today/Tomorrow labels', async () => {
 });
 
 test('renderCanvasContent should filter to current week', async () => {
-  const now = new Date();
+  // Fixed Monday anchor to avoid Sunday "show next week" logic (issue #21)
+  const now = new Date('2026-04-14T10:00:00Z'); // Monday
   const thisWeekEvent = {
     id: 'e1',
     title: 'This Week Event',
@@ -230,7 +231,7 @@ test('renderCanvasContent should filter to current week', async () => {
   };
 
   const allEvents = [thisWeekEvent, nextWeekEvent];
-  const result = await renderCanvasContent(allEvents, { locale: 'en-US', config: {}, cacheMap: new Map() });
+  const result = await renderCanvasContent(allEvents, { locale: 'en-US', config: {}, cacheMap: new Map(), now });
 
   assert.match(result, /This Week Event/);
   assert.ok(!result.includes('Next Week Event'), 'Should not include next week events');
@@ -255,7 +256,8 @@ test('renderCanvasContent adds Nextcloud link when nextcloud_url provided', asyn
 });
 
 test('renderCanvasContent works without nextcloud_url', async () => {
-  const now = new Date();
+  // Fixed Monday anchor to avoid Sunday "show next week" logic (issue #21)
+  const now = new Date('2026-04-14T10:00:00Z'); // Monday
   const events = [{
     title: 'Test Event',
     start: now,
@@ -263,7 +265,7 @@ test('renderCanvasContent works without nextcloud_url', async () => {
     isAllDay: false
   }];
 
-  const result = await renderCanvasContent(events, { locale: 'en-US', config: {}, cacheMap: new Map() });
+  const result = await renderCanvasContent(events, { locale: 'en-US', config: {}, cacheMap: new Map(), now });
 
   assert.ok(!result.includes('Nextcloud'), 'Should not have Nextcloud text');
   assert.ok(result.includes('Test Event'), 'Should have event content');
