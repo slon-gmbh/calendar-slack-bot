@@ -24,7 +24,7 @@ const { fetchCalendar } = require('./caldav.js');
 const { postMessage, updateCanvas, postErrorNotification } = require('./slack.js');
 const { renderWeekView, renderDailyView, renderCanvasContent, renderBundledNotification, renderCalendarLegend } = require('./formatting.js');
 const { diffEvents, loadCachedEvents, saveCachedEvents, loadPendingNotifications, savePendingNotifications } = require('./diff.js');
-const { matchesSchedule, shouldNotifyNow } = require('./scheduler.js');
+const { scheduleMatchesCron, shouldNotifyNow } = require('./scheduler.js');
 
 const args = process.argv.slice(2);
 const mode = args.find(arg => arg.startsWith('--') && !arg.startsWith('--dry'));
@@ -405,43 +405,40 @@ async function saveLastRunTime(channelId, digestType, timestamp) {
 async function runScheduledDigests(config, dryRun) {
   const { hasRunToday, hasRunThisWeek } = require('./scheduler.js');
   const now = new Date();
+  const firedCron = process.env.SCHEDULED_CRON;
+
+  if (!firedCron) {
+    console.warn('SCHEDULED_CRON env var not set — running all pending digests');
+  }
 
   for (const channel of config.channels) {
-    // Check weekly digest
-    if (channel.digest_schedule && matchesSchedule(channel.digest_schedule, now, channel.locale || config.locale)) {
-      console.log(`Weekly digest schedule match for channel ${channel.id}`);
+    if (channel.digest_schedule) {
+      const matches = firedCron ? scheduleMatchesCron(channel.digest_schedule, firedCron, now) : true;
 
-      // Check if already run this week
-      const lastRun = await loadLastRunTime(channel.id, 'weekly');
-      if (hasRunThisWeek(lastRun)) {
-        console.log(`Weekly digest already posted this week for channel ${channel.id}, skipping`);
-        continue;
-      }
-
-      await postDigestForChannel(config, channel, 'weekly', dryRun);
-
-      // Save run timestamp
-      if (!dryRun) {
-        await saveLastRunTime(channel.id, 'weekly', now);
+      if (matches) {
+        console.log(`Weekly digest schedule match for channel ${channel.id}`);
+        const lastRun = await loadLastRunTime(channel.id, 'weekly');
+        if (hasRunThisWeek(lastRun)) {
+          console.log(`Weekly digest already posted this week for channel ${channel.id}, skipping`);
+        } else {
+          await postDigestForChannel(config, channel, 'weekly', dryRun);
+          if (!dryRun) await saveLastRunTime(channel.id, 'weekly', now);
+        }
       }
     }
 
-    // Check daily digest
-    if (channel.daily_digest_schedule && matchesSchedule(channel.daily_digest_schedule, now, channel.locale || config.locale)) {
-      console.log(`Daily digest schedule match for channel ${channel.id}`);
+    if (channel.daily_digest_schedule) {
+      const matches = firedCron ? scheduleMatchesCron(channel.daily_digest_schedule, firedCron, now) : true;
 
-      // Check if already run today
-      const lastRun = await loadLastRunTime(channel.id, 'daily');
-      if (hasRunToday(lastRun)) {
-        console.log(`Daily digest already posted today for channel ${channel.id}, skipping`);
-        continue;
-      }
-
-      await postDigestForChannel(config, channel, 'daily', dryRun);
-
-      // Save run timestamp
-      if (!dryRun) {
-        await saveLastRunTime(channel.id, 'daily', now);
+      if (matches) {
+        console.log(`Daily digest schedule match for channel ${channel.id}`);
+        const lastRun = await loadLastRunTime(channel.id, 'daily');
+        if (hasRunToday(lastRun)) {
+          console.log(`Daily digest already posted today for channel ${channel.id}, skipping`);
+        } else {
+          await postDigestForChannel(config, channel, 'daily', dryRun);
+          if (!dryRun) await saveLastRunTime(channel.id, 'daily', now);
+        }
       }
     }
   }

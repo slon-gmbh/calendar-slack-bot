@@ -11,6 +11,37 @@ const DAILY_DIGEST_THRESHOLD_HOURS = 20;
 const WEEKLY_DIGEST_THRESHOLD_DAYS = 7;
 
 /**
+ * Check if a channel schedule matches the cron expression that triggered the workflow.
+ * Compares configured time exactly against cron time — no wall-clock tolerance needed.
+ * @param {string} scheduleStr - Channel schedule, e.g. "sunday 18:00" or "weekdays 08:00"
+ * @param {string} cronStr - Fired cron expression, e.g. "0 18 * * 0"
+ * @param {Date} now - Current time (used for day-of-week check)
+ * @returns {boolean} True if channel should post for this cron trigger
+ * @example scheduleMatchesCron('sunday 18:00', '0 18 * * 0', sundayDate) // true
+ * @example scheduleMatchesCron('sunday 18:00', '0 18 * * 0', mondayDate) // false
+ */
+function scheduleMatchesCron(scheduleStr, cronStr, now = new Date()) {
+  if (!scheduleStr || !cronStr) return false;
+
+  const schedMatch = scheduleStr.match(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekdays|weekends|daily)\s+(\d{2}):(\d{2})$/i);
+  if (!schedMatch) return false;
+
+  const [, dayKeyword, schedHours, schedMinutes] = schedMatch;
+  const schedHour = parseInt(schedHours, 10);
+  const schedMinute = parseInt(schedMinutes, 10);
+
+  const cronMatch = cronStr.match(/^(\d+)\s+(\d+)\s+\*\s+\*\s+([\d,\-*]+)$/);
+  if (!cronMatch) return false;
+
+  const cronHour = parseInt(cronMatch[2], 10);
+  const cronMinute = parseInt(cronMatch[1], 10);
+
+  if (cronHour !== schedHour || cronMinute !== schedMinute) return false;
+
+  return matchesDay(dayKeyword.toLowerCase(), now.getUTCDay());
+}
+
+/**
  * Check if current time matches a schedule
  * @param {string} schedule - e.g., "monday 14:00", "weekdays 08:00"
  * @param {Date} currentTime - Time to check
@@ -250,6 +281,7 @@ function isDailySchedule(schedule) {
 
 module.exports = {
   matchesSchedule,
+  scheduleMatchesCron,
   classifyUrgency,
   shouldNotifyNow,
   hasRunToday,

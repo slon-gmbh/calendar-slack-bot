@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   matchesSchedule,
+  scheduleMatchesCron,
   classifyUrgency,
   shouldNotifyNow,
   hasRunToday,
@@ -38,6 +39,37 @@ test('matchesSchedule should handle cron format', () => {
 
   assert.ok(matchesSchedule(schedule, sundayAt18, 'en-US'));
   assert.ok(!matchesSchedule(schedule, mondayAt18, 'en-US'));
+});
+
+test('scheduleMatchesCron should match sunday schedule against sunday cron regardless of delay', () => {
+  const sunday = new Date('2026-04-19T19:02:00Z'); // Sunday, 62 min after cron fired
+  assert.ok(scheduleMatchesCron('sunday 18:00', '0 18 * * 0', sunday));
+});
+
+test('scheduleMatchesCron should not match on wrong day', () => {
+  const monday = new Date('2026-04-20T18:00:00Z');
+  assert.ok(!scheduleMatchesCron('sunday 18:00', '0 18 * * 0', monday));
+});
+
+test('scheduleMatchesCron should match weekdays schedule against weekday cron', () => {
+  const monday = new Date('2026-04-14T09:15:00Z'); // Monday, 75 min after cron
+  assert.ok(scheduleMatchesCron('weekdays 08:00', '0 8 * * 1-5', monday));
+});
+
+test('scheduleMatchesCron should not match weekday cron on weekend', () => {
+  const saturday = new Date('2026-04-18T08:00:00Z');
+  assert.ok(!scheduleMatchesCron('weekdays 08:00', '0 8 * * 1-5', saturday));
+});
+
+test('scheduleMatchesCron should not match when cron time differs from schedule time', () => {
+  const sunday = new Date('2026-04-19T18:00:00Z');
+  assert.ok(!scheduleMatchesCron('sunday 18:00', '0 8 * * 1-5', sunday));
+});
+
+test('scheduleMatchesCron should return false for missing args', () => {
+  const now = new Date('2026-04-19T18:00:00Z');
+  assert.ok(!scheduleMatchesCron(null, '0 18 * * 0', now));
+  assert.ok(!scheduleMatchesCron('sunday 18:00', null, now));
 });
 
 test('classifyUrgency should return URGENT for events within 24h', () => {

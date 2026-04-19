@@ -75,6 +75,7 @@ jobs:
           CALDAV_PASSWORD: ${{ secrets.CALDAV_PASSWORD }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CACHE_DIR: /tmp/cache-state
+          SCHEDULED_CRON: ${{ github.event.schedule }}
         run: node src/bot.js --scheduled
 
       - name: Commit digest run state
