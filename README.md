@@ -144,6 +144,10 @@ Trigger manual workflow:
 - CET (UTC+1): `18:00` local = `17:00` in config
 - PST (UTC-8): `18:00` local = `02:00` (next day) in config
 
+## Roadmap
+
+Development is tracked in the [GitHub Project — Calendar Slack Bot Roadmap](https://github.com/orgs/slon-gmbh/projects/12). Issues are planned across 5 two-week sprints (Apr 20 – Jun 28, 2026), covering: persistent server deployment, Slack slash command UI, multi-tenant storage, i18n, and launch.
+
 ## Upstream Updates
 
 This is a **template repository**. Upstream updates require manual sync:
