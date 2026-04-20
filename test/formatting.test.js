@@ -713,6 +713,36 @@ test('renderDailyView removes calendar emoji from footer', async () => {
   assert.match(result, /1 event/, 'Should contain event count');
 });
 
+test('renderDailyView counts only events in date range, not full fetch window', async () => {
+  // Use midday UTC for range boundaries so local-time date keys are stable across timezones
+  const events = [
+    {
+      title: 'Today Event',
+      start: new Date('2026-03-23T10:00:00Z'),
+      end: new Date('2026-03-23T11:00:00Z'),
+      isAllDay: false,
+      calendarName: 'Team'
+    },
+    {
+      title: 'Out of Range Event',
+      start: new Date('2026-03-26T10:00:00Z'),
+      end: new Date('2026-03-26T11:00:00Z'),
+      isAllDay: false,
+      calendarName: 'Team'
+    }
+  ];
+
+  const dateRange = {
+    start: new Date('2026-03-23T00:00:00Z'),
+    end: new Date('2026-03-24T12:00:00Z')
+  };
+
+  const result = await renderDailyView(events, dateRange, 'en-US', { config: {}, cacheMap: new Map() });
+
+  assert.match(result, /1 event/, 'Should count only the in-range event, not the out-of-range one');
+  assert.ok(!result.includes('2 events'), 'Should not count out-of-range events');
+});
+
 test('renderWeekView shows inline calendar color indicators', async () => {
   const events = [
     {

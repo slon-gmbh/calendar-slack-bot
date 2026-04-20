@@ -1042,9 +1042,10 @@ async function renderDailyView(events, dateRange, locale = 'en-US', options = {}
     output += '\n';
   }
 
-  // Summary
-  const totalEvents = flattenedEvents.length;
-  const uniqueCalendars = new Set(flattenedEvents.map(e => e.calendarName).filter(Boolean)).size;
+  // Summary — count only events actually displayed (today + tomorrow), not the full fetch window
+  const displayedEvents = [...eventsByDay.values()].flat();
+  const totalEvents = displayedEvents.length;
+  const uniqueCalendars = new Set(displayedEvents.map(e => e.calendarName).filter(Boolean)).size;
   const eventLabel = totalEvents === 1 ? getTranslation(locale, 'event') : getTranslation(locale, 'events');
   output += `${totalEvents} ${eventLabel}`;
   if (uniqueCalendars > 0) {

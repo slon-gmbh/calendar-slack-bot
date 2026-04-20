@@ -481,6 +481,20 @@ async function postDigestForChannel(config, channel, type, dryRun) {
     ? getDailyRange()
     : getCurrentWeekRange();
 
+  if (type === 'daily') {
+    const hasEvents = allEvents.some(event => {
+      const instances = event.instances && event.instances.length > 0 ? event.instances : [event];
+      return instances.some(inst => inst.start >= dateRange.start && inst.start <= dateRange.end);
+    });
+    if (!hasEvents) {
+      console.log(`No events for today/tomorrow in channel ${channel.id}, skipping daily digest`);
+      const cacheMap = await buildCacheMap(config);
+      const canvasContent = await renderCanvasContent(allEvents, { locale, timezone, ...channel, config, cacheMap });
+      await updateCanvas(channel.canvas_id, canvasContent, dryRun);
+      return;
+    }
+  }
+
   const cacheMap = await buildCacheMap(config);
   const digest = type === 'daily'
     ? await renderDailyView(allEvents, dateRange, locale, { ...channel, timezone, config, cacheMap, canvas_url: channel.canvas_url })
