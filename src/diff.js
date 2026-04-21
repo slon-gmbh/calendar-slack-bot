@@ -172,155 +172,31 @@ function detectChanges(oldEvent, newEvent) {
   return null; // No actionable changes
 }
 
+const { loadPending, savePending } = require('./db.js');
+
 /**
- * Load cached events from GitHub Actions cache
- * @param {string} calendarId - Calendar identifier
- * @returns {Promise<Array|null>} Cached events or null if not found
- *
- * DEPRECATED: Originally designed for GitHub Actions cache approach.
- * Superseded by src/cache.js which uses the cache-state git branch.
- * Retained for reference. Safe to remove in a future cleanup pass.
+ * Load pending notifications for a channel from SQLite.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} channelId
+ * @returns {{expired: boolean, diffs: Array}}
  */
-async function loadCachedEvents(calendarId) {
-  try {
-    const cache = await import('@actions/cache');
-    const cacheKey = `calendar-state-${calendarId}`;
-    const cachePath = `/tmp/cache-${calendarId}.json`;
-
-    // Try to restore cache
-    const restoredKey = await cache.restoreCache([cachePath], cacheKey);
-    if (!restoredKey) {
-      return null; // Cache miss
-    }
-
-    // Read cached data
-    const { readFile } = await import('node:fs/promises');
-    const content = await readFile(cachePath, 'utf-8');
-    const data = JSON.parse(content);
-
-    return data.events || null;
-  } catch (error) {
-    if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('@actions/cache')) {
-      console.warn('Cache unavailable (not running in GitHub Actions) — skipping cache operations');
-    } else {
-      console.warn(`Failed to load cache for ${calendarId}:`, error.message);
-    }
-    return null;
-  }
+function loadPendingNotifications(db, channelId) {
+  return loadPending(db, channelId);
 }
 
 /**
- * Save events to GitHub Actions cache
- * @param {string} calendarId - Calendar identifier
- * @param {Array} events - Events to cache
- * @returns {Promise<void>}
- *
- * DEPRECATED: Originally designed for GitHub Actions cache approach.
- * Superseded by src/cache.js which uses the cache-state git branch.
- * Retained for reference. Safe to remove in a future cleanup pass.
+ * Save pending notifications for a channel to SQLite.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} channelId
+ * @param {Array} diffs
  */
-async function saveCachedEvents(calendarId, events) {
-  try {
-    const cache = await import('@actions/cache');
-    const cacheKey = `calendar-state-${calendarId}`;
-    const cachePath = `/tmp/cache-${calendarId}.json`;
-
-    // Write data to temp file
-    const { writeFile } = await import('node:fs/promises');
-    const data = {
-      timestamp: new Date().toISOString(),
-      events
-    };
-    await writeFile(cachePath, JSON.stringify(data), 'utf-8');
-
-    // Save to cache
-    await cache.saveCache([cachePath], cacheKey);
-  } catch (error) {
-    if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('@actions/cache')) {
-      console.warn('Cache unavailable (not running in GitHub Actions) — skipping cache operations');
-    } else {
-      console.warn(`Failed to save cache for ${calendarId}:`, error.message);
-    }
-    // Non-fatal - continue execution
-  }
-}
-
-/**
- * Load pending notifications from debounce cache
- * @param {string} channelId - Channel identifier
- * @returns {Promise<Object>} { expired: boolean, diffs: [] } - expired=true means window expired and diffs should be posted
- */
-async function loadPendingNotifications(channelId) {
-  try {
-    const cache = await import('@actions/cache');
-    const cacheKey = `pending-notifications-${channelId}`;
-    const cachePath = `/tmp/pending-${channelId}.json`;
-
-    const restoredKey = await cache.restoreCache([cachePath], cacheKey);
-    if (!restoredKey) {
-      return { expired: false, diffs: [] }; // No pending notifications
-    }
-
-    const { readFile } = await import('node:fs/promises');
-    const content = await readFile(cachePath, 'utf-8');
-    const data = JSON.parse(content);
-
-    // Check if notifications are within 5 min window
-    const timestamp = new Date(data.timestamp);
-    const now = new Date();
-    const ageSeconds = (now - timestamp) / 1000;
-
-    if (ageSeconds > 300) {
-      // Window expired — return stale diffs so they get posted, not dropped
-      return { expired: true, diffs: data.diffs || [] };
-    }
-
-    return { expired: false, diffs: data.diffs || [] };
-  } catch (error) {
-    if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('@actions/cache')) {
-      console.warn('Cache unavailable (not running in GitHub Actions) — skipping cache operations');
-    } else {
-      console.warn(`Failed to load pending notifications for ${channelId}:`, error.message);
-    }
-    return { expired: false, diffs: [] };
-  }
-}
-
-/**
- * Save pending notifications to debounce cache
- * @param {string} channelId - Channel identifier
- * @param {Array} diffs - Notification diffs to cache
- * @returns {Promise<void>}
- */
-async function savePendingNotifications(channelId, diffs) {
-  try {
-    const cache = await import('@actions/cache');
-    const cacheKey = `pending-notifications-${channelId}`;
-    const cachePath = `/tmp/pending-${channelId}.json`;
-
-    const { writeFile } = await import('node:fs/promises');
-    const data = {
-      timestamp: new Date().toISOString(),
-      diffs
-    };
-    await writeFile(cachePath, JSON.stringify(data), 'utf-8');
-
-    await cache.saveCache([cachePath], cacheKey);
-  } catch (error) {
-    if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('@actions/cache')) {
-      console.warn('Cache unavailable (not running in GitHub Actions) — skipping cache operations');
-    } else {
-      console.warn(`Failed to save pending notifications for ${channelId}:`, error.message);
-    }
-    // Non-fatal - continue execution
-  }
+function savePendingNotifications(db, channelId, diffs) {
+  savePending(db, channelId, diffs);
 }
 
 module.exports = {
   diffEvents,
   normalizeRRule,
-  loadCachedEvents,
-  saveCachedEvents,
   loadPendingNotifications,
   savePendingNotifications
 };
