@@ -50,10 +50,12 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(error => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(error => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}
 
 const { getCurrentWeekRange, getChangeDetectionRange } = require('./runner.js');
 module.exports = { getCurrentWeekRange, getChangeDetectionRange };
