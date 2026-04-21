@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { diffEvents } = require('../src/diff.js');
+const { diffEvents, loadPendingNotifications, savePendingNotifications } = require('../src/diff.js');
+const { openDb } = require('../src/db.js');
 
 test('diffEvents should detect new events', () => {
   const previous = [];
@@ -439,9 +440,6 @@ test('diffEvents should handle malformed RRULE in both old and new (issue #16)',
   // DTSTART difference should be ignored
   assert.strictEqual(diffs.length, 0, 'Both malformed RRULEs should normalize to same pattern');
 });
-
-const { openDb } = require('../src/db.js');
-const { loadPendingNotifications, savePendingNotifications } = require('../src/diff.js');
 
 test('savePendingNotifications and loadPendingNotifications round-trip within window', () => {
   const db = openDb(':memory:');

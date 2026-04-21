@@ -2,6 +2,8 @@
  * Event diffing and cache management
  */
 
+const { loadPending, savePending } = require('./db.js');
+
 /**
  * Generate a unique key for an event
  * With composite structure, recurring events are grouped by ID, not per-instance
@@ -105,7 +107,6 @@ function detectChanges(oldEvent, newEvent) {
     // If RRULE changed or appeared/disappeared, that's a pattern change
     if (normalizedOld !== normalizedNew) {
       console.log(`[DIFF] Recurrence pattern changed for "${newEvent.title}"`);
-      // TODO: Task 4 will add formatting support for pattern_changed type
       return {
         type: 'pattern_changed',
         event: newEvent,
@@ -171,8 +172,6 @@ function detectChanges(oldEvent, newEvent) {
 
   return null; // No actionable changes
 }
-
-const { loadPending, savePending } = require('./db.js');
 
 /**
  * Load pending notifications for a channel from SQLite.
