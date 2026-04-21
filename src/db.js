@@ -1,4 +1,6 @@
 const Database = require('better-sqlite3');
+const { readdirSync, readFileSync, unlinkSync } = require('node:fs');
+const path = require('node:path');
 
 /**
  * Open (or create) a SQLite database, run schema migrations, and return the instance.
@@ -49,7 +51,7 @@ function loadEvents(db, calendarId) {
 
   const events = JSON.parse(row.events_json).map(e => ({
     ...e,
-    instances: e.instances.map(inst => ({
+    instances: (e.instances ?? []).map(inst => ({
       ...inst,
       start: new Date(inst.start),
       end: new Date(inst.end)
@@ -181,9 +183,6 @@ function savePending(db, channelId, diffs, createdAt = new Date()) {
  * @param {string} legacyDir - Directory previously used as CACHE_DIR
  */
 function migrateFromFlatFiles(db, legacyDir) {
-  const { readdirSync, readFileSync, unlinkSync } = require('node:fs');
-  const path = require('node:path');
-
   let files;
   try {
     files = readdirSync(legacyDir);

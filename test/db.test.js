@@ -107,3 +107,15 @@ test('loadPending returns empty diffs for unknown channel', () => {
   assert.deepStrictEqual(result.diffs, []);
   db.close();
 });
+
+test('savePending second write overwrites first (upsert resets timer)', () => {
+  const db = memDb();
+  const oldTs = new Date(Date.now() - 6 * 60 * 1000);
+  savePending(db, 'C123', [{ type: 'new', event: { id: 'e1' } }], oldTs);
+  savePending(db, 'C123', [{ type: 'deleted', event: { id: 'e2' } }], new Date());
+  const result = loadPending(db, 'C123');
+  assert.strictEqual(result.expired, false);
+  assert.strictEqual(result.diffs.length, 1);
+  assert.strictEqual(result.diffs[0].type, 'deleted');
+  db.close();
+});
