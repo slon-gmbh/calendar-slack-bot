@@ -54,15 +54,16 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
             continue;
           }
 
-          // rrule.between() strips the .tz property that node-ical sets on event.start.
-          // Without it, convertToUTC treats the already-correct UTC value as a local time
-          // and subtracts the timezone offset a second time. Restore it from the master event.
-          if (!instance.tz && event.start && event.start.tz) {
-            instance.tz = event.start.tz;
-          }
+          // rrule.between() with a TZID calls rezonedDate() internally, which computes
+          // (target-TZ offset - local-TZ offset) and shifts the result accordingly.
+          // On UTC systems this subtracts the full TZID offset, giving wrong UTC values.
+          // Rebuild the correct UTC from the original event's TZID-local time + instance date.
+          const correctedInstance = (event.start && event.start.tz)
+            ? buildInstanceUTCFromTZID(instance, event.start, event.start.tz)
+            : instance;
 
           // Build instance object
-          const singleInstance = normalizeEvent(event, instance, timezone);
+          const singleInstance = normalizeEvent(event, correctedInstance, timezone);
           eventInstances.push(...singleInstance.instances);
         }
 
@@ -264,6 +265,36 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
   };
 
   return normalized;
+}
+
+/**
+ * Rebuild the correct UTC Date for a recurring event instance.
+ * rrule.between() with a TZID internally calls rezonedDate(), which subtracts
+ * (target-TZ offset - system-local offset) from the date. On a UTC system this
+ * subtracts the full TZID offset from the already-correct UTC, producing wrong values.
+ * Instead, extract the TZID-local time from originalStart (which has the correct UTC)
+ * and combine it with the instance date to produce a system-independent result.
+ * @param {Date} instance - rrule.between() output (system-timezone-dependent UTC)
+ * @param {Date} originalStart - event.start with correct UTC and .tz property set
+ * @param {string} tzid - IANA timezone ID (e.g. 'Europe/Berlin')
+ * @returns {Date} Date with correct UTC value and .tz set to tzid
+ */
+function buildInstanceUTCFromTZID(instance, originalStart, tzid) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tzid,
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).formatToParts(originalStart);
+  const getVal = type => parseInt(parts.find(p => p.type === type).value, 10);
+
+  const floatingDate = new Date(Date.UTC(
+    instance.getUTCFullYear(), instance.getUTCMonth(), instance.getUTCDate(),
+    getVal('hour'), getVal('minute'), getVal('second')
+  ));
+
+  const correctUTC = convertToUTC(floatingDate, tzid);
+  correctUTC.tz = tzid;
+  return correctUTC;
 }
 
 module.exports = {
