@@ -231,6 +231,54 @@ test('normalizeEvent should return composite structure for recurring event', () 
   assert.strictEqual(result.instances[0].isException, false);
 });
 
+test('recurring event with TZID=Europe/Berlin stores correct UTC times (issue #TZ-RECURRING)', async () => {
+  // Bug: rrule.between() returns instances with correct UTC but no .tz property.
+  // convertToUTC sees no .tz and subtracts the Berlin offset a second time,
+  // shifting all recurring event times by -2h (CEST) or -1h (CET).
+  // Non-recurring events are unaffected because icalEvent.start.tz IS set by node-ical.
+  const testIcal = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Nextcloud//Nextcloud//EN
+BEGIN:VEVENT
+UID:test-berlin-recurring-tz@test
+SUMMARY:EG | Eurythmie (mit Friederike)
+DTSTART;TZID=Europe/Berlin:20260422T093000
+DTEND;TZID=Europe/Berlin:20260422T103000
+RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=3
+END:VEVENT
+END:VCALENDAR`;
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, text: async () => testIcal });
+
+  try {
+    const events = await fetchCalendar(
+      'https://test.example.com/calendar',
+      { username: 'test', password: 'test' },
+      { start: new Date('2026-04-20T00:00:00Z'), end: new Date('2026-05-10T00:00:00Z') },
+      'Europe/Berlin'
+    );
+
+    assert.equal(events.length, 1, 'Should have 1 composite event');
+    assert.equal(events[0].instances.length, 3, 'Should have 3 weekly instances');
+
+    // 09:30 Berlin CEST (UTC+2) = 07:30 UTC
+    // 10:30 Berlin CEST (UTC+2) = 08:30 UTC
+    for (const inst of events[0].instances) {
+      assert.equal(inst.start.getUTCHours(), 7,
+        `Instance start should be 07:xx UTC, got ${inst.start.toISOString()}`);
+      assert.equal(inst.start.getUTCMinutes(), 30,
+        `Instance start should be xx:30 UTC, got ${inst.start.toISOString()}`);
+      assert.equal(inst.end.getUTCHours(), 8,
+        `Instance end should be 08:xx UTC, got ${inst.end.toISOString()}`);
+      assert.equal(inst.end.getUTCMinutes(), 30,
+        `Instance end should be xx:30 UTC, got ${inst.end.toISOString()}`);
+    }
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('normalizeEvent should convert Europe/Berlin timezone to UTC correctly (issue #16)', () => {
   // Simulate node-ical parsing DTSTART;TZID=Europe/Berlin:20260415T110000
   // When node-ical doesn't attach .tz property, the Date object has UTC components

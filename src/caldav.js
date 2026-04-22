@@ -54,6 +54,13 @@ async function fetchCalendar(caldavUrl, credentials, dateRange, timezone = 'UTC'
             continue;
           }
 
+          // rrule.between() strips the .tz property that node-ical sets on event.start.
+          // Without it, convertToUTC treats the already-correct UTC value as a local time
+          // and subtracts the timezone offset a second time. Restore it from the master event.
+          if (!instance.tz && event.start && event.start.tz) {
+            instance.tz = event.start.tz;
+          }
+
           // Build instance object
           const singleInstance = normalizeEvent(event, instance, timezone);
           eventInstances.push(...singleInstance.instances);
@@ -186,6 +193,10 @@ function normalizeEvent(icalEvent, instanceStart = null, timezone = 'UTC') {
     // Apply duration to this instance
     const instanceDate = instanceStart instanceof Date ? instanceStart : new Date(instanceStart);
     end = new Date(instanceDate.getTime() + durationMs);
+    // Propagate .tz so convertToUTC treats this end as already-correct UTC (same reason as start)
+    if (instanceStart.tz) {
+      end.tz = instanceStart.tz;
+    }
   } else {
     end = icalEvent.end || start;
   }
