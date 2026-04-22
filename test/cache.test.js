@@ -1,81 +1,20 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { openDb } = require('../src/db.js');
 const { loadCacheState, saveCacheState } = require('../src/cache.js');
-const { writeFile, mkdir, rm } = require('node:fs/promises');
-const path = require('node:path');
 
-const TEST_CACHE_DIR = path.join(__dirname, '.test-cache');
+function memDb() {
+  return openDb(':memory:');
+}
 
-test('loadCacheState should load valid cache file', async () => {
-  await mkdir(TEST_CACHE_DIR, { recursive: true });
-
-  const cacheData = {
-    events: [
-      { id: 'e1', title: 'Test Event', start: '2026-03-26T10:00:00.000Z' }
-    ],
-    updated_at: '2026-03-26T09:00:00Z'
-  };
-
-  await writeFile(
-    path.join(TEST_CACHE_DIR, 'team-calendar.json'),
-    JSON.stringify(cacheData),
-    'utf-8'
-  );
-
-  const result = await loadCacheState('team-calendar', TEST_CACHE_DIR);
-
-  // Old format events should be migrated to composite structure
-  assert.strictEqual(result.events.length, 1);
-  assert.strictEqual(result.events[0].id, 'e1');
-  assert.strictEqual(result.events[0].title, 'Test Event');
-  // Migrated to composite structure with instances array
-  assert.ok(Array.isArray(result.events[0].instances));
-  assert.strictEqual(result.events[0].instances.length, 1);
-  assert.ok(result.events[0].instances[0].start instanceof Date);
-  assert.strictEqual(result.events[0].instances[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
-  assert.strictEqual(result.updated_at, cacheData.updated_at);
-
-  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+test('loadCacheState returns null for unknown calendar', () => {
+  const db = memDb();
+  assert.strictEqual(loadCacheState(db, 'nonexistent'), null);
+  db.close();
 });
 
-test('loadCacheState should return null for missing file', async () => {
-  await mkdir(TEST_CACHE_DIR, { recursive: true });
-
-  const result = await loadCacheState('nonexistent-calendar', TEST_CACHE_DIR);
-
-  assert.strictEqual(result, null);
-
-  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
-});
-
-test('loadCacheState should return null for corrupt JSON', async () => {
-  await mkdir(TEST_CACHE_DIR, { recursive: true });
-
-  await writeFile(
-    path.join(TEST_CACHE_DIR, 'corrupt-calendar.json'),
-    '{ invalid json',
-    'utf-8'
-  );
-
-  const result = await loadCacheState('corrupt-calendar', TEST_CACHE_DIR);
-
-  assert.strictEqual(result, null);
-
-  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
-});
-
-/**
- * Verify saveCacheState writes valid JSON with events and proper metadata
- * Round-trip test: save events with no error state, then load and verify
- * - Event IDs and titles match exactly after round trip
- * - Event start dates serialize to ISO strings correctly
- * - updated_at timestamp is set
- * - last_error field is absent (not included in JSON)
- */
-test('saveCacheState should write valid JSON with events', async () => {
-  await mkdir(TEST_CACHE_DIR, { recursive: true });
-
-  // Save events in new composite structure
+test('saveCacheState and loadCacheState round-trip with composite events', () => {
+  const db = memDb();
   const events = [
     {
       id: 'e1',
@@ -85,50 +24,52 @@ test('saveCacheState should write valid JSON with events', async () => {
       isAllDay: false,
       rrule: null,
       instances: [
-        { start: new Date('2026-03-26T10:00:00Z'), end: new Date('2026-03-26T11:00:00Z'), isException: false }
+        { start: new Date('2026-04-21T10:00:00Z'), end: new Date('2026-04-21T11:00:00Z'), isException: false }
       ],
-      calendarName: 'test-calendar'
+      calendarName: 'Team'
     }
   ];
 
-  await saveCacheState('test-calendar', events, null, TEST_CACHE_DIR);
+  saveCacheState(db, 'cal-1', events, null, null);
+  const result = loadCacheState(db, 'cal-1');
 
-  const saved = await loadCacheState('test-calendar', TEST_CACHE_DIR);
-
-  assert.strictEqual(saved.events[0].id, 'e1');
-  assert.strictEqual(saved.events[0].title, 'Meeting');
-  // Composite structure with instances array
-  assert.ok(Array.isArray(saved.events[0].instances));
-  assert.strictEqual(saved.events[0].instances.length, 1);
-  assert.ok(saved.events[0].instances[0].start instanceof Date);
-  assert.strictEqual(saved.events[0].instances[0].start.toISOString(), '2026-03-26T10:00:00.000Z');
-  assert.ok(saved.updated_at);
-  assert.ok(!saved.last_error);
-
-  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+  assert.strictEqual(result.events.length, 1);
+  assert.strictEqual(result.events[0].id, 'e1');
+  assert.ok(Array.isArray(result.events[0].instances));
+  assert.ok(result.events[0].instances[0].start instanceof Date);
+  assert.strictEqual(result.events[0].instances[0].start.toISOString(), '2026-04-21T10:00:00.000Z');
+  assert.ok(result.updated_at);
+  assert.ok(!result.last_error);
+  db.close();
 });
 
-/**
- * Verify saveCacheState includes error metadata when provided
- * Round-trip test: save empty events with error state, then load and verify
- * - last_error field is preserved
- * - error_notified_at field is preserved
- */
-test('saveCacheState should include error metadata', async () => {
-  await mkdir(TEST_CACHE_DIR, { recursive: true });
+test('saveCacheState persists error metadata', () => {
+  const db = memDb();
+  const errorState = { last_error: 'CalDAV timeout', error_notified_at: '2026-04-21T10:00:00Z' };
 
-  const events = [];
-  const errorState = {
-    last_error: 'CalDAV timeout',
-    error_notified_at: '2026-03-26T10:00:00Z'
-  };
+  saveCacheState(db, 'cal-err', [], errorState, null);
+  const result = loadCacheState(db, 'cal-err');
 
-  await saveCacheState('error-calendar', events, errorState, TEST_CACHE_DIR);
+  assert.strictEqual(result.last_error, 'CalDAV timeout');
+  assert.strictEqual(result.error_notified_at, '2026-04-21T10:00:00Z');
+  db.close();
+});
 
-  const saved = await loadCacheState('error-calendar', TEST_CACHE_DIR);
+test('saveCacheState persists color, loadCacheState includes it', () => {
+  const db = memDb();
+  const color = { hex: '#3498db', emoji: ':blue_circle:', source: 'caldav' };
 
-  assert.strictEqual(saved.last_error, 'CalDAV timeout');
-  assert.strictEqual(saved.error_notified_at, '2026-03-26T10:00:00Z');
+  saveCacheState(db, 'cal-color', [], null, color);
+  const result = loadCacheState(db, 'cal-color');
 
-  await rm(TEST_CACHE_DIR, { recursive: true, force: true });
+  assert.deepStrictEqual(result.color, color);
+  db.close();
+});
+
+test('loadCacheState returns null color when none saved', () => {
+  const db = memDb();
+  saveCacheState(db, 'cal-nocolor', [], null, null);
+  const result = loadCacheState(db, 'cal-nocolor');
+  assert.strictEqual(result.color, null);
+  db.close();
 });

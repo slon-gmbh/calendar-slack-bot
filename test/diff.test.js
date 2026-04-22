@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { diffEvents } = require('../src/diff.js');
+const { diffEvents, loadPendingNotifications, savePendingNotifications } = require('../src/diff.js');
+const { openDb } = require('../src/db.js');
 
 test('diffEvents should detect new events', () => {
   const previous = [];
@@ -438,4 +439,23 @@ test('diffEvents should handle malformed RRULE in both old and new (issue #16)',
   // Should detect NO changes - RRULE pattern is the same (FREQ=DAILY)
   // DTSTART difference should be ignored
   assert.strictEqual(diffs.length, 0, 'Both malformed RRULEs should normalize to same pattern');
+});
+
+test('savePendingNotifications and loadPendingNotifications round-trip within window', () => {
+  const db = openDb(':memory:');
+  const diffs = [{ type: 'new', event: { id: 'e1', title: 'New' } }];
+  savePendingNotifications(db, 'C123', diffs);
+  const result = loadPendingNotifications(db, 'C123');
+  assert.strictEqual(result.expired, false);
+  assert.strictEqual(result.diffs.length, 1);
+  assert.strictEqual(result.diffs[0].type, 'new');
+  db.close();
+});
+
+test('loadPendingNotifications returns empty for unknown channel', () => {
+  const db = openDb(':memory:');
+  const result = loadPendingNotifications(db, 'C999');
+  assert.strictEqual(result.expired, false);
+  assert.deepStrictEqual(result.diffs, []);
+  db.close();
 });
