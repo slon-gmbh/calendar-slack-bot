@@ -175,6 +175,43 @@ Automated sync is a v2 consideration.
 - Check bot has `canvases:write` scope
 - Verify bot is member of channel
 
+## Deployment (Fly.io)
+
+### First-time setup
+
+1. Install the Fly CLI: https://fly.io/docs/hands-on/install-flyctl/
+2. Authenticate: `fly auth login`
+3. Create the app and volume:
+   ```bash
+   fly apps create slon-calendar-bot
+   fly volumes create calendar_bot_data --region fra --size 1
+   ```
+4. Set secrets:
+   ```bash
+   fly secrets set SLACK_BOT_TOKEN=xoxb-...
+   fly secrets set CALDAV_PASSWORD=your-nextcloud-app-password
+   ```
+5. Deploy:
+   ```bash
+   fly deploy
+   ```
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SLACK_BOT_TOKEN` | Yes | Slack bot token (`xoxb-...`). Set via `fly secrets set`. |
+| `CALDAV_PASSWORD` | Yes | Nextcloud app password for CalDAV. Set via `fly secrets set`. |
+| `DATA_DIR` | Yes | Directory for SQLite DB. Set to `/data` in `fly.toml`. |
+| `PORT` | No | HTTP port (default: `8080`). Set in `fly.toml`. |
+| `DRY_RUN` | No | If `true`, routes Slack messages to `error_channel` instead of posting. |
+| `CONFIG_FILE` | No | Path to `config.json` (default: `./config.json`). |
+| `CACHE_DIR` | No | Deprecated. Used only to migrate legacy flat-file cache to SQLite on first boot. |
+
+### Health check
+
+The server exposes `GET /health` → `{"status":"ok"}` (HTTP 200). Fly.io uses this for readiness checks.
+
 ## License
 
 MIT
