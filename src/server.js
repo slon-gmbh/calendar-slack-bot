@@ -108,9 +108,10 @@ async function start() {
   function shutdown() {
     console.log('Shutting down — stopping cron jobs');
     for (const job of jobs) job.stop();
-    httpServer.close();
-    db.close();
-    process.exit(0);
+    httpServer.close(() => {
+      db.close();
+      process.exit(0);
+    });
   }
 
   process.on('SIGTERM', shutdown);
