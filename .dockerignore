@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.*
+.worktrees
+test
+docs
+.git
+.gitignore
+screenshot.png
+test-output.txt
+tools
