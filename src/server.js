@@ -1,3 +1,4 @@
+const http = require('node:http');
 const path = require('node:path');
 const cron = require('node-cron');
 const { loadConfig } = require('./config.js');
@@ -37,7 +38,7 @@ function scheduleStringToCron(str) {
 }
 
 async function start() {
-  const config = await loadConfig();
+  const config = await loadConfig(process.env.CONFIG_FILE);
 
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
@@ -90,9 +91,24 @@ async function start() {
     }
   }));
 
+  const port = parseInt(process.env.PORT || '8080', 10);
+  const httpServer = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  httpServer.listen(port, () => {
+    console.log(`HTTP server listening on port ${port}`);
+  });
+
   function shutdown() {
     console.log('Shutting down — stopping cron jobs');
     for (const job of jobs) job.stop();
+    httpServer.close();
     db.close();
     process.exit(0);
   }
