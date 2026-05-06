@@ -139,3 +139,30 @@ test('validates nextcloud_url format when provided', () => {
     /nextcloud_url must be a valid URL/
   );
 });
+
+test('validateConfig should accept valid error_digest_schedule', () => {
+  const config = {
+    workspace_id: 'T123',
+    locale: 'en-US',
+    caldav_credentials: { username: 'u', password: 'p' },
+    calendars: {},
+    channels: [],
+    error_digest_schedule: 'weekdays 08:00'
+  };
+  assert.doesNotThrow(() => validateConfig(config));
+});
+
+test('validateConfig should reject invalid error_digest_schedule', () => {
+  const config = {
+    workspace_id: 'T123',
+    locale: 'en-US',
+    caldav_credentials: { username: 'u', password: 'p' },
+    calendars: {},
+    channels: [],
+    error_digest_schedule: 'not-a-schedule'
+  };
+  assert.throws(
+    () => validateConfig(config),
+    /Config error: invalid schedule format for error_digest_schedule/
+  );
+});

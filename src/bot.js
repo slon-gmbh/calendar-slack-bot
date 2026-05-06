@@ -442,6 +442,61 @@ async function runScheduledDigests(config, dryRun) {
       }
     }
   }
+
+  await runErrorChannelDigest(config, dryRun);
+}
+
+/**
+ * Post a daily digest of all calendars to the error channel
+ * @param {Object} config - Bot configuration
+ * @param {boolean} dryRun - Dry run mode flag
+ * @returns {Promise<void>}
+ */
+async function runErrorChannelDigest(config, dryRun) {
+  if (!config.error_channel || !config.error_digest_schedule) return;
+
+  const { hasRunToday } = require('./scheduler.js');
+  const now = new Date();
+  const firedCron = process.env.SCHEDULED_CRON;
+  const matches = firedCron ? scheduleMatchesCron(config.error_digest_schedule, firedCron, now) : true;
+  if (!matches) return;
+
+  const lastRun = await loadLastRunTime('__error_channel__', 'daily');
+  if (hasRunToday(lastRun)) {
+    console.log('Error channel daily digest already posted today, skipping');
+    return;
+  }
+
+  const timezone = config.timezone || 'UTC';
+  const locale = config.locale;
+  const allEvents = [];
+
+  for (const [calId, calendar] of Object.entries(config.calendars)) {
+    try {
+      const events = await fetchCalendar(calendar.caldav_url, config.caldav_credentials, getCurrentWeekRange(), timezone);
+      console.log(`Fetched ${events.length} events from calendar '${calendar.name}' (${calId})`);
+      allEvents.push(...events.map(e => ({ ...e, calendarName: calendar.name })));
+    } catch (error) {
+      console.error(`Failed to fetch calendar '${calendar.name}' (${calId}): ${error.message}`);
+    }
+  }
+
+  const dateRange = getDailyRange();
+  const hasEvents = allEvents.some(event => {
+    const instances = event.instances && event.instances.length > 0 ? event.instances : [event];
+    return instances.some(inst => inst.start >= dateRange.start && inst.start <= dateRange.end);
+  });
+
+  if (!hasEvents) {
+    console.log('No events for today/tomorrow in error channel digest, skipping');
+    return;
+  }
+
+  const cacheMap = await buildCacheMap(config);
+  const digest = await renderDailyView(allEvents, dateRange, locale, { timezone, config, cacheMap });
+  await postMessage(config.error_channel, digest, dryRun, config.error_channel);
+
+  if (!dryRun) await saveLastRunTime('__error_channel__', 'daily', now);
 }
 
 /**

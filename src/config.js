@@ -113,6 +113,10 @@ function validateConfig(config) {
     }
   }
 
+  if (config.error_digest_schedule) {
+    validateScheduleFormat(config.error_digest_schedule, 'error_digest_schedule');
+  }
+
   // Validate locale format (basic BCP 47 pattern check)
   if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(resolved.locale)) {
     throw new Error(`Config error: invalid locale '${resolved.locale}' - must be a valid BCP 47 language tag`);
