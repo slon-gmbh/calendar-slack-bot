@@ -29,8 +29,8 @@ test('getChangeDetectionRange returns current week + 4 weeks lookahead', () => {
 test('saveRunState and loadRunState via db.js', () => {
   const db = openDb(':memory:');
   const ts = new Date('2026-04-21T08:00:00Z');
-  saveRunState(db, 'C123', 'weekly', ts);
-  const loaded = loadRunState(db, 'C123', 'weekly');
+  saveRunState(db, 'T_TEST', 'C123', 'weekly', ts);
+  const loaded = loadRunState(db, 'T_TEST', 'C123', 'weekly');
   assert.ok(loaded instanceof Date);
   assert.strictEqual(loaded.toISOString(), ts.toISOString());
   db.close();
@@ -38,6 +38,6 @@ test('saveRunState and loadRunState via db.js', () => {
 
 test('loadRunState returns null for unknown channel', () => {
   const db = openDb(':memory:');
-  assert.strictEqual(loadRunState(db, 'C999', 'daily'), null);
+  assert.strictEqual(loadRunState(db, 'T_TEST', 'C999', 'daily'), null);
   db.close();
 });

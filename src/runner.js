@@ -16,7 +16,7 @@ async function buildCacheMap(config, db) {
   const cacheMap = new Map();
   for (const calendarId of Object.keys(config.calendars)) {
     try {
-      const cached = loadCacheState(db, calendarId);
+      const cached = loadCacheState(db, config.workspace_id, calendarId);
       if (cached) cacheMap.set(calendarId, cached);
     } catch (error) {
       console.warn(`Failed to load cache for calendar ${calendarId}:`, error.message);
@@ -65,13 +65,13 @@ async function runChangeDetection(config, db, dryRun) {
     let cachedData = null;
 
     try {
-      cachedData = loadCacheState(db, calId);
+      cachedData = loadCacheState(db, config.workspace_id, calId);
       const timezone = config.timezone || 'UTC';
       const currentEvents = await fetchCalendar(calendar.caldav_url, config.caldav_credentials, dateRange, timezone);
 
       if (!cachedData) {
         console.log(`No previous state for ${calId} - establishing baseline`);
-        saveCacheState(db, calId, currentEvents, null, null);
+        saveCacheState(db, config.workspace_id, calId, currentEvents, null, null);
         continue;
       }
 
@@ -80,7 +80,7 @@ async function runChangeDetection(config, db, dryRun) {
 
       if (diffs.length === 0) {
         console.log(`No changes detected for ${calId}`);
-        saveCacheState(db, calId, currentEvents, null, null);
+        saveCacheState(db, config.workspace_id, calId, currentEvents, null, null);
         continue;
       }
 
@@ -99,7 +99,7 @@ async function runChangeDetection(config, db, dryRun) {
         console.log(`Collected ${notifiableDiffs.length} diff(s) for channel ${channel.id} from ${calendar.name}`);
       }
 
-      saveCacheState(db, calId, currentEvents, null, null);
+      saveCacheState(db, config.workspace_id, calId, currentEvents, null, null);
 
     } catch (error) {
       console.error(`Failed to fetch calendar '${calendar.name}' (${calId}): ${error.message}`);
@@ -108,7 +108,7 @@ async function runChangeDetection(config, db, dryRun) {
         await postErrorNotification(config.error_channel, `Calendar fetch failed: ${calendar.name}\n\n${error.message}`, dryRun);
       }
       if (cachedData) {
-        saveCacheState(db, calId, cachedData.events, {
+        saveCacheState(db, config.workspace_id, calId, cachedData.events, {
           last_error: error.message,
           error_notified_at: shouldNotify ? new Date().toISOString() : cachedData.error_notified_at
         }, null);
@@ -169,8 +169,8 @@ async function bundleAndPostChangeDetections(config, channelDiffsMap, cacheMap, 
     if (newColors) {
       for (const [calId, colorCache] of newColors.entries()) {
         try {
-          const cached = loadCacheState(db, calId);
-          if (cached) saveCacheState(db, calId, cached.events, null, colorCache);
+          const cached = loadCacheState(db, config.workspace_id, calId);
+          if (cached) saveCacheState(db, config.workspace_id, calId, cached.events, null, colorCache);
         } catch (error) {
           console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
         }
@@ -196,12 +196,12 @@ async function runScheduledDigests(config, db, dryRun) {
       const matches = firedCron ? scheduleMatchesCron(channel.digest_schedule, firedCron, now) : true;
       if (matches) {
         console.log(`Weekly digest schedule match for channel ${channel.id}`);
-        const lastRun = loadRunState(db, channel.id, 'weekly');
+        const lastRun = loadRunState(db, config.workspace_id, channel.id, 'weekly');
         if (hasRunThisWeek(lastRun)) {
           console.log(`Weekly digest already posted this week for channel ${channel.id}, skipping`);
         } else {
           await postDigestForChannel(config, channel, 'weekly', db, dryRun);
-          if (!dryRun) saveRunState(db, channel.id, 'weekly', now);
+          if (!dryRun) saveRunState(db, config.workspace_id, channel.id, 'weekly', now);
         }
       }
     }
@@ -210,12 +210,12 @@ async function runScheduledDigests(config, db, dryRun) {
       const matches = firedCron ? scheduleMatchesCron(channel.daily_digest_schedule, firedCron, now) : true;
       if (matches) {
         console.log(`Daily digest schedule match for channel ${channel.id}`);
-        const lastRun = loadRunState(db, channel.id, 'daily');
+        const lastRun = loadRunState(db, config.workspace_id, channel.id, 'daily');
         if (hasRunToday(lastRun)) {
           console.log(`Daily digest already posted today for channel ${channel.id}, skipping`);
         } else {
           await postDigestForChannel(config, channel, 'daily', db, dryRun);
-          if (!dryRun) saveRunState(db, channel.id, 'daily', now);
+          if (!dryRun) saveRunState(db, config.workspace_id, channel.id, 'daily', now);
         }
       }
     }
@@ -291,7 +291,7 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, db, d
     const notifiableDiffs = diffsWithCalendar.filter(diff => shouldNotifyNow(diff, channel));
     if (notifiableDiffs.length === 0) continue;
 
-    const pending = loadPendingNotifications(db, channel.id);
+    const pending = loadPendingNotifications(db, config.workspace_id, channel.id);
 
     if (pending.expired && pending.diffs.length > 0) {
       console.log(`Debounce window expired for channel ${channel.id} - posting ${pending.diffs.length} stale diffs`);
@@ -303,8 +303,8 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, db, d
       if (staleNewColors) {
         for (const [calId, colorCache] of staleNewColors.entries()) {
           try {
-            const cached = loadCacheState(db, calId);
-            if (cached) saveCacheState(db, calId, cached.events, null, colorCache);
+            const cached = loadCacheState(db, config.workspace_id, calId);
+            if (cached) saveCacheState(db, config.workspace_id, calId, cached.events, null, colorCache);
           } catch (error) {
             console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
           }
@@ -314,7 +314,7 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, db, d
 
     if (pending.expired || pending.diffs.length === 0) {
       console.log(`Started fresh debounce window for channel ${channel.id}`);
-      savePendingNotifications(db, channel.id, notifiableDiffs);
+      savePendingNotifications(db, config.workspace_id, channel.id, notifiableDiffs);
       continue;
     }
 
@@ -327,15 +327,15 @@ async function routeDiffsToChannels(config, calendarId, diffsWithCalendar, db, d
     if (newColors) {
       for (const [calId, colorCache] of newColors.entries()) {
         try {
-          const cached = loadCacheState(db, calId);
-          if (cached) saveCacheState(db, calId, cached.events, null, colorCache);
+          const cached = loadCacheState(db, config.workspace_id, calId);
+          if (cached) saveCacheState(db, config.workspace_id, calId, cached.events, null, colorCache);
         } catch (error) {
           console.warn(`Failed to persist color for calendar ${calId}:`, error.message);
         }
       }
     }
 
-    savePendingNotifications(db, channel.id, []);
+    savePendingNotifications(db, config.workspace_id, channel.id, []);
   }
 }
 
@@ -352,7 +352,7 @@ async function runFullRefresh(config, db, dryRun) {
   for (const calId of Object.keys(config.calendars)) {
     const calendar = config.calendars[calId];
     const currentEvents = await fetchCalendar(calendar.caldav_url, config.caldav_credentials, getCurrentWeekRange(), timezone);
-    const cached = loadCacheState(db, calId);
+    const cached = loadCacheState(db, config.workspace_id, calId);
     const previousEvents = cached ? cached.events : [];
     const diffs = diffEvents(previousEvents, currentEvents);
 
@@ -362,7 +362,7 @@ async function runFullRefresh(config, db, dryRun) {
       await routeDiffsToChannels(config, calId, diffsWithCalendar, db, dryRun);
     }
 
-    saveCacheState(db, calId, currentEvents, null, null);
+    saveCacheState(db, config.workspace_id, calId, currentEvents, null, null);
   }
 }
 
@@ -397,20 +397,20 @@ async function runEventChanged(config, db, dryRun) {
   const timezone = config.timezone || 'UTC';
   const currentEvents = await fetchCalendar(calendar.caldav_url, config.caldav_credentials, getCurrentWeekRange(), timezone);
 
-  const cached = loadCacheState(db, matchedCalId);
+  const cached = loadCacheState(db, config.workspace_id, matchedCalId);
   const previousEvents = cached ? cached.events : [];
   const diffs = diffEvents(previousEvents, currentEvents);
 
   if (diffs.length === 0) {
     console.log('No changes detected');
-    saveCacheState(db, matchedCalId, currentEvents, null, null);
+    saveCacheState(db, config.workspace_id, matchedCalId, currentEvents, null, null);
     return;
   }
 
   console.log(`Detected ${diffs.length} change(s)`);
   const diffsWithCalendar = diffs.map(d => ({ ...d, calendarName: calendar.name }));
   await routeDiffsToChannels(config, matchedCalId, diffsWithCalendar, db, dryRun);
-  saveCacheState(db, matchedCalId, currentEvents, null, null);
+  saveCacheState(db, config.workspace_id, matchedCalId, currentEvents, null, null);
 }
 
 /**
