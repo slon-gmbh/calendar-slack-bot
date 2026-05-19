@@ -11,109 +11,112 @@ const path = require('node:path');
 function openDb(dbPath) {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
 
   const version = db.pragma('user_version', { simple: true });
 
   if (version === 0) {
-    db.exec(`
-      DROP TABLE IF EXISTS events;
-      DROP TABLE IF EXISTS color_cache;
-      DROP TABLE IF EXISTS run_state;
-      DROP TABLE IF EXISTS pending_notifications;
+    db.transaction(() => {
+      db.exec(`
+        DROP TABLE IF EXISTS events;
+        DROP TABLE IF EXISTS color_cache;
+        DROP TABLE IF EXISTS run_state;
+        DROP TABLE IF EXISTS pending_notifications;
 
-      CREATE TABLE workspaces (
-        team_id       TEXT PRIMARY KEY,
-        team_name     TEXT NOT NULL,
-        bot_token     TEXT,
-        installed_by  TEXT,
-        installed_at  TEXT NOT NULL,
-        active        INTEGER NOT NULL DEFAULT 1,
-        locale        TEXT,
-        timezone      TEXT,
-        error_channel TEXT,
-        nextcloud_url TEXT
-      );
+        CREATE TABLE workspaces (
+          team_id       TEXT PRIMARY KEY,
+          team_name     TEXT NOT NULL,
+          bot_token     TEXT,
+          installed_by  TEXT,
+          installed_at  TEXT NOT NULL,
+          active        INTEGER NOT NULL DEFAULT 1,
+          locale        TEXT,
+          timezone      TEXT,
+          error_channel TEXT,
+          nextcloud_url TEXT
+        );
 
-      CREATE TABLE caldav_credentials (
-        workspace_id TEXT PRIMARY KEY,
-        username     TEXT NOT NULL,
-        password     TEXT NOT NULL,
-        FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
-      );
+        CREATE TABLE caldav_credentials (
+          workspace_id TEXT PRIMARY KEY,
+          username     TEXT NOT NULL,
+          password     TEXT NOT NULL,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
+        );
 
-      CREATE TABLE calendars (
-        workspace_id        TEXT NOT NULL,
-        calendar_id         TEXT NOT NULL,
-        name                TEXT NOT NULL,
-        caldav_url          TEXT NOT NULL,
-        caldav_metadata_url TEXT,
-        color               TEXT,
-        PRIMARY KEY (workspace_id, calendar_id),
-        FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
-      );
+        CREATE TABLE calendars (
+          workspace_id        TEXT NOT NULL,
+          calendar_id         TEXT NOT NULL,
+          name                TEXT NOT NULL,
+          caldav_url          TEXT NOT NULL,
+          caldav_metadata_url TEXT,
+          color               TEXT,
+          PRIMARY KEY (workspace_id, calendar_id),
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
+        );
 
-      CREATE TABLE channels (
-        workspace_id          TEXT NOT NULL,
-        channel_id            TEXT NOT NULL,
-        name                  TEXT,
-        canvas_id             TEXT,
-        canvas_url            TEXT,
-        locale                TEXT,
-        view                  TEXT,
-        event_detail          TEXT,
-        digest_style          TEXT,
-        digest_format         TEXT,
-        digest_schedule       TEXT,
-        daily_digest_schedule TEXT,
-        show_empty_days       INTEGER,
-        notifications         TEXT,
-        PRIMARY KEY (workspace_id, channel_id),
-        FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
-      );
+        CREATE TABLE channels (
+          workspace_id          TEXT NOT NULL,
+          channel_id            TEXT NOT NULL,
+          name                  TEXT,
+          canvas_id             TEXT,
+          canvas_url            TEXT,
+          locale                TEXT,
+          view                  TEXT,
+          event_detail          TEXT,
+          digest_style          TEXT,
+          digest_format         TEXT,
+          digest_schedule       TEXT,
+          daily_digest_schedule TEXT,
+          show_empty_days       INTEGER,
+          notifications         TEXT,
+          PRIMARY KEY (workspace_id, channel_id),
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
+        );
 
-      CREATE TABLE channel_calendars (
-        workspace_id TEXT NOT NULL,
-        channel_id   TEXT NOT NULL,
-        calendar_id  TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, channel_id, calendar_id),
-        FOREIGN KEY (workspace_id, channel_id) REFERENCES channels(workspace_id, channel_id),
-        FOREIGN KEY (workspace_id, calendar_id) REFERENCES calendars(workspace_id, calendar_id)
-      );
+        CREATE TABLE channel_calendars (
+          workspace_id TEXT NOT NULL,
+          channel_id   TEXT NOT NULL,
+          calendar_id  TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, channel_id, calendar_id),
+          FOREIGN KEY (workspace_id, channel_id) REFERENCES channels(workspace_id, channel_id),
+          FOREIGN KEY (workspace_id, calendar_id) REFERENCES calendars(workspace_id, calendar_id)
+        );
 
-      CREATE TABLE events (
-        workspace_id      TEXT NOT NULL,
-        calendar_id       TEXT NOT NULL,
-        events_json       TEXT NOT NULL,
-        last_error        TEXT,
-        error_notified_at TEXT,
-        updated_at        TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, calendar_id)
-      );
+        CREATE TABLE events (
+          workspace_id      TEXT NOT NULL,
+          calendar_id       TEXT NOT NULL,
+          events_json       TEXT NOT NULL,
+          last_error        TEXT,
+          error_notified_at TEXT,
+          updated_at        TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, calendar_id)
+        );
 
-      CREATE TABLE color_cache (
-        workspace_id TEXT NOT NULL,
-        calendar_id  TEXT NOT NULL,
-        color_json   TEXT NOT NULL,
-        updated_at   TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, calendar_id)
-      );
+        CREATE TABLE color_cache (
+          workspace_id TEXT NOT NULL,
+          calendar_id  TEXT NOT NULL,
+          color_json   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, calendar_id)
+        );
 
-      CREATE TABLE run_state (
-        workspace_id TEXT NOT NULL,
-        channel_id   TEXT NOT NULL,
-        digest_type  TEXT NOT NULL,
-        last_run     TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, channel_id, digest_type)
-      );
+        CREATE TABLE run_state (
+          workspace_id TEXT NOT NULL,
+          channel_id   TEXT NOT NULL,
+          digest_type  TEXT NOT NULL,
+          last_run     TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, channel_id, digest_type)
+        );
 
-      CREATE TABLE pending_notifications (
-        workspace_id TEXT NOT NULL,
-        channel_id   TEXT NOT NULL,
-        diffs_json   TEXT NOT NULL,
-        created_at   TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, channel_id)
-      );
-    `);
+        CREATE TABLE pending_notifications (
+          workspace_id TEXT NOT NULL,
+          channel_id   TEXT NOT NULL,
+          diffs_json   TEXT NOT NULL,
+          created_at   TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, channel_id)
+        );
+      `);
+    })();
     db.pragma('user_version = 1');
   }
 
