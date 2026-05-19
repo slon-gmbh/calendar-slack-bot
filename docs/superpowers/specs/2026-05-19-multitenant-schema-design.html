@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#44 — Multi-Tenant SQLite Schema &amp; Per-Workspace Config API</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3e;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --accent: #6366f1;
+    --accent-dim: #3730a3;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --code-bg: #11141e;
+    --toc-width: 220px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.7;
+    display: flex;
+  }
+
+  /* ── TOC ── */
+  nav#toc {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: var(--toc-width);
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    background: var(--surface);
+  }
+
+  nav#toc h2 {
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  nav#toc ol {
+    list-style: none;
+    counter-reset: toc;
+  }
+
+  nav#toc li { counter-increment: toc; margin-bottom: 6px; }
+
+  nav#toc a {
+    display: flex;
+    gap: 8px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    line-height: 1.4;
+    transition: color .15s;
+  }
+
+  nav#toc a::before {
+    content: counter(toc);
+    color: var(--accent);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    min-width: 14px;
+  }
+
+  nav#toc a:hover { color: var(--text); }
+
+  /* ── Main content ── */
+  main {
+    flex: 1;
+    max-width: 860px;
+    padding: 40px 48px;
+    overflow-x: hidden;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 32px;
+  }
+
+  h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin: 40px 0 16px;
+  }
+
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin: 24px 0 10px;
+  }
+
+  p { margin-bottom: 12px; }
+
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #a5b4fc;
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    color: #c7d2fe;
+  }
+
+  /* ── Decisions table ── */
+  table.decisions {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 32px;
+    font-size: 13px;
+  }
+
+  table.decisions th {
+    background: var(--accent-dim);
+    color: var(--text);
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  table.decisions td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  table.decisions tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .badge-locked { background: var(--accent-dim); color: #a5b4fc; }
+  .badge-deferred { background: #292524; color: var(--amber); }
+
+  /* ── Callouts ── */
+  aside.callout {
+    border-left: 3px solid var(--accent);
+    background: #1e2035;
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+    font-size: 13.5px;
+  }
+
+  aside.callout.amber { border-color: var(--amber); background: #201c10; }
+  aside.callout.green { border-color: var(--green); background: #0f1e17; }
+
+  aside.callout strong { color: var(--accent); }
+  aside.callout.amber strong { color: var(--amber); }
+  aside.callout.green strong { color: var(--green); }
+
+  /* ── Details / collapsibles ── */
+  details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 12px 0;
+  }
+
+  summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+
+  summary::-webkit-details-marker { display: none; }
+
+  summary::before {
+    content: '▶';
+    font-size: 9px;
+    color: var(--accent);
+    transition: transform .15s;
+  }
+
+  details[open] summary::before { transform: rotate(90deg); }
+
+  details > *:not(summary) {
+    padding: 0 14px 14px;
+  }
+
+  /* ── Module tag ── */
+  .module {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 12px;
+    background: #1a1d27;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    color: #93c5fd;
+    margin: 2px;
+  }
+
+  /* ── SVG diagram ── */
+  .diagram-container {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+
+  svg text { font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav id="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#decisions">Locked Decisions</a></li>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#affected">Affected Modules</a></li>
+    <li><a href="#schema">Schema</a></li>
+    <li><a href="#migration">Migration Strategy</a></li>
+    <li><a href="#db-api">db.js API</a></li>
+    <li><a href="#config-api">config.js API</a></li>
+    <li><a href="#callers">Caller Updates</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#ac">Acceptance Criteria</a></li>
+  </ol>
+</nav>
+
+<!-- ── Content ── -->
+<main>
+
+  <h1>#44 — Multi-Tenant SQLite Schema &amp;<br>Per-Workspace Config API</h1>
+  <p class="subtitle">Design spec · v2 branch · 2026-05-19</p>
+
+  <!-- ── 1. Locked Decisions ── -->
+  <h2 id="decisions">Locked Decisions</h2>
+
+  <table class="decisions">
+    <thead>
+      <tr>
+        <th>Decision</th>
+        <th>Choice</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Migration strategy for existing tables</td>
+        <td>Drop-and-recreate via <code>PRAGMA user_version</code> (0 → 1). Operational data (events, colors, run_state, pending) regenerates from CalDAV and cron on next run.</td>
+        <td><span class="badge badge-locked">Locked</span></td>
+      </tr>
+      <tr>
+        <td>Credential storage format</td>
+        <td>Plaintext in SQLite for now. <code>bot_token</code> and CalDAV <code>password</code> stored unencrypted until #45 adds AES-256-GCM encryption layer.</td>
+        <td><span class="badge badge-deferred">Encrypted in #45</span></td>
+      </tr>
+      <tr>
+        <td>loadConfigFromDb location</td>
+        <td>Stays in <code>config.js</code> alongside <code>loadConfig()</code>. Callers change import target but not import path.</td>
+        <td><span class="badge badge-locked">Locked</span></td>
+      </tr>
+      <tr>
+        <td>seedWorkspace bot_token</td>
+        <td>Optional (NULL default). Single-workspace server continues reading <code>SLACK_BOT_TOKEN</code> env var until OAuth (#46) populates it per workspace.</td>
+        <td><span class="badge badge-locked">Locked</span></td>
+      </tr>
+      <tr>
+        <td>migrateFromFlatFiles</td>
+        <td>Removed. v2 starts fresh; flat-file migration path is irrelevant.</td>
+        <td><span class="badge badge-locked">Locked</span></td>
+      </tr>
+      <tr>
+        <td>CalDAV credentials scope</td>
+        <td>One set per workspace (username + password). Sufficient for v1 — single Nextcloud instance per community.</td>
+        <td><span class="badge badge-locked">Locked</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── 2. Overview ── -->
+  <h2 id="overview">Overview</h2>
+
+  <p>
+    The v2 branch evolves the bot from a single-tenant GitHub Actions script into a
+    multi-tenant Slack app. Every piece of state — calendar events, channel config,
+    credentials — must be scoped to a <strong>workspace ID</strong> (Slack's <code>team_id</code>).
+  </p>
+
+  <p>
+    This issue (#44) lays the database foundation. It is a prerequisite for every other
+    v2 issue: #45 (encryption), #46 (OAuth), #47 (per-workspace cron), #48 (onboarding wizard).
+  </p>
+
+  <aside class="callout">
+    <strong>Scope boundary:</strong> This issue does <em>not</em> implement encryption (#45),
+    OAuth token storage (#46), or multi-workspace cron scheduling (#47). Those build on top
+    of this schema.
+  </aside>
+
+  <!-- ── 3. Affected Modules ── -->
+  <h2 id="affected">Affected Modules</h2>
+
+  <span class="module">src/db.js</span>
+  <span class="module">src/config.js</span>
+  <span class="module">src/server.js</span>
+  <span class="module">src/bot.js</span>
+  <span class="module">test/db.test.js</span>
+  <span class="module">test/config-db.test.js</span> <em style="color:var(--muted);font-size:12px;">(new)</em>
+
+  <!-- ── 4. Schema ── -->
+  <h2 id="schema">Schema</h2>
+
+  <p>Nine tables total: four existing (recreated with composite PKs) + five new config tables.</p>
+
+  <h3>Existing tables — recreated</h3>
+
+  <p>
+    These tables existed in the single-tenant schema but lacked <code>workspace_id</code>.
+    The <a href="#migration">migration strategy</a> drops them and recreates them with correct
+    composite primary keys.
+  </p>
+
+  <details>
+    <summary>Full SQL — operational tables</summary>
+<pre><code>CREATE TABLE events (
+  workspace_id      TEXT NOT NULL,
+  calendar_id       TEXT NOT NULL,
+  events_json       TEXT NOT NULL,
+  last_error        TEXT,
+  error_notified_at TEXT,
+  updated_at        TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, calendar_id)
+);
+
+CREATE TABLE color_cache (
+  workspace_id TEXT NOT NULL,
+  calendar_id  TEXT NOT NULL,
+  color_json   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, calendar_id)
+);
+
+CREATE TABLE run_state (
+  workspace_id TEXT NOT NULL,
+  channel_id   TEXT NOT NULL,
+  digest_type  TEXT NOT NULL,
+  last_run     TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, channel_id, digest_type)
+);
+
+CREATE TABLE pending_notifications (
+  workspace_id TEXT NOT NULL,
+  channel_id   TEXT NOT NULL,
+  diffs_json   TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, channel_id)
+);</code></pre>
+  </details>
+
+  <h3>New config tables</h3>
+
+  <details>
+    <summary>Full SQL — config tables</summary>
+<pre><code>CREATE TABLE workspaces (
+  team_id       TEXT PRIMARY KEY,
+  team_name     TEXT NOT NULL,
+  bot_token     TEXT,            -- plaintext; #45 encrypts
+  installed_by  TEXT,
+  installed_at  TEXT NOT NULL,
+  active        INTEGER NOT NULL DEFAULT 1,
+  locale        TEXT,            -- workspace default, e.g. 'en-US'
+  timezone      TEXT,            -- IANA timezone, e.g. 'Europe/Berlin'
+  error_channel TEXT,            -- channel_id for error routing
+  nextcloud_url TEXT             -- optional, display only
+);
+
+CREATE TABLE caldav_credentials (
+  workspace_id TEXT PRIMARY KEY,
+  username     TEXT NOT NULL,
+  password     TEXT NOT NULL,  -- plaintext; #45 encrypts
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
+);
+
+CREATE TABLE calendars (
+  workspace_id       TEXT NOT NULL,
+  calendar_id        TEXT NOT NULL,  -- slug e.g. "team", "vorstand"
+  name               TEXT NOT NULL,
+  caldav_url         TEXT NOT NULL,
+  caldav_metadata_url TEXT,
+  color              TEXT,
+  PRIMARY KEY (workspace_id, calendar_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
+);
+
+CREATE TABLE channels (
+  workspace_id          TEXT NOT NULL,
+  channel_id            TEXT NOT NULL,
+  name                  TEXT,
+  canvas_id             TEXT,
+  canvas_url            TEXT,
+  locale                TEXT,
+  view                  TEXT,
+  event_detail          TEXT,
+  digest_style          TEXT,
+  digest_format         TEXT,
+  digest_schedule       TEXT,
+  daily_digest_schedule TEXT,
+  show_empty_days       INTEGER,
+  notifications         TEXT,
+  PRIMARY KEY (workspace_id, channel_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(team_id)
+);
+
+CREATE TABLE channel_calendars (
+  workspace_id TEXT NOT NULL,
+  channel_id   TEXT NOT NULL,
+  calendar_id  TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, channel_id, calendar_id),
+  FOREIGN KEY (workspace_id, channel_id) REFERENCES channels(workspace_id, channel_id),
+  FOREIGN KEY (workspace_id, calendar_id) REFERENCES calendars(workspace_id, calendar_id)
+);</code></pre>
+  </details>
+
+  <h3>Entity-Relationship Diagram</h3>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 780 420" width="100%" xmlns="http://www.w3.org/2000/svg" style="font-size:11px;">
+      <!-- workspaces -->
+      <rect x="10" y="10" width="160" height="130" rx="5" fill="#1e2035" stroke="#6366f1" stroke-width="1.5"/>
+      <rect x="10" y="10" width="160" height="24" rx="5" fill="#3730a3"/>
+      <rect x="10" y="28" width="160" height="6" fill="#3730a3"/>
+      <text x="90" y="27" text-anchor="middle" fill="#e2e8f0" font-weight="bold">workspaces</text>
+      <text x="20" y="52" fill="#a5b4fc">◆ team_id</text>
+      <text x="20" y="67" fill="#8892a4">  team_name</text>
+      <text x="20" y="82" fill="#8892a4">  bot_token ¹</text>
+      <text x="20" y="97" fill="#8892a4">  installed_by</text>
+      <text x="20" y="112" fill="#8892a4">  installed_at</text>
+      <text x="20" y="127" fill="#8892a4">  active</text>
+
+      <!-- caldav_credentials -->
+      <rect x="10" y="175" width="160" height="90" rx="5" fill="#1e2035" stroke="#6366f1" stroke-width="1.5"/>
+      <rect x="10" y="175" width="160" height="24" rx="5" fill="#3730a3"/>
+      <rect x="10" y="193" width="160" height="6" fill="#3730a3"/>
+      <text x="90" y="192" text-anchor="middle" fill="#e2e8f0" font-weight="bold">caldav_credentials</text>
+      <text x="20" y="217" fill="#a5b4fc">◆ workspace_id →</text>
+      <text x="20" y="232" fill="#8892a4">  username</text>
+      <text x="20" y="247" fill="#8892a4">  password ¹</text>
+
+      <!-- calendars -->
+      <rect x="220" y="10" width="165" height="120" rx="5" fill="#1e2035" stroke="#6366f1" stroke-width="1.5"/>
+      <rect x="220" y="10" width="165" height="24" rx="5" fill="#3730a3"/>
+      <rect x="220" y="28" width="165" height="6" fill="#3730a3"/>
+      <text x="302" y="27" text-anchor="middle" fill="#e2e8f0" font-weight="bold">calendars</text>
+      <text x="230" y="52" fill="#a5b4fc">◆ workspace_id →</text>
+      <text x="230" y="67" fill="#a5b4fc">◆ calendar_id</text>
+      <text x="230" y="82" fill="#8892a4">  name</text>
+      <text x="230" y="97" fill="#8892a4">  caldav_url</text>
+      <text x="230" y="112" fill="#8892a4">  caldav_metadata_url</text>
+
+      <!-- channels -->
+      <rect x="220" y="170" width="165" height="180" rx="5" fill="#1e2035" stroke="#6366f1" stroke-width="1.5"/>
+      <rect x="220" y="170" width="165" height="24" rx="5" fill="#3730a3"/>
+      <rect x="220" y="188" width="165" height="6" fill="#3730a3"/>
+      <text x="302" y="187" text-anchor="middle" fill="#e2e8f0" font-weight="bold">channels</text>
+      <text x="230" y="212" fill="#a5b4fc">◆ workspace_id →</text>
+      <text x="230" y="227" fill="#a5b4fc">◆ channel_id</text>
+      <text x="230" y="242" fill="#8892a4">  name, canvas_id</text>
+      <text x="230" y="257" fill="#8892a4">  locale, view</text>
+      <text x="230" y="272" fill="#8892a4">  digest_schedule</text>
+      <text x="230" y="287" fill="#8892a4">  daily_digest_schedule</text>
+      <text x="230" y="302" fill="#8892a4">  notifications, ...</text>
+
+      <!-- channel_calendars join -->
+      <rect x="440" y="100" width="160" height="90" rx="5" fill="#1e2035" stroke="#10b981" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <rect x="440" y="100" width="160" height="24" rx="5" fill="#0f3728"/>
+      <rect x="440" y="118" width="160" height="6" fill="#0f3728"/>
+      <text x="520" y="117" text-anchor="middle" fill="#10b981" font-weight="bold">channel_calendars</text>
+      <text x="450" y="142" fill="#a5b4fc">◆ workspace_id</text>
+      <text x="450" y="157" fill="#a5b4fc">◆ channel_id</text>
+      <text x="450" y="172" fill="#a5b4fc">◆ calendar_id</text>
+
+      <!-- events -->
+      <rect x="440" y="240" width="160" height="115" rx="5" fill="#1e2035" stroke="#f59e0b" stroke-width="1.5"/>
+      <rect x="440" y="240" width="160" height="24" rx="5" fill="#292524"/>
+      <rect x="440" y="258" width="160" height="6" fill="#292524"/>
+      <text x="520" y="257" text-anchor="middle" fill="#f59e0b" font-weight="bold">events</text>
+      <text x="450" y="282" fill="#a5b4fc">◆ workspace_id</text>
+      <text x="450" y="297" fill="#a5b4fc">◆ calendar_id</text>
+      <text x="450" y="312" fill="#8892a4">  events_json</text>
+      <text x="450" y="327" fill="#8892a4">  last_error</text>
+      <text x="450" y="342" fill="#8892a4">  updated_at</text>
+
+      <!-- run_state / pending simplified -->
+      <rect x="630" y="100" width="140" height="75" rx="5" fill="#1e2035" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="700" y="120" text-anchor="middle" fill="#f59e0b" font-weight="bold">run_state</text>
+      <text x="640" y="140" fill="#a5b4fc">◆ workspace_id</text>
+      <text x="640" y="155" fill="#a5b4fc">◆ channel_id</text>
+      <text x="640" y="170" fill="#a5b4fc">◆ digest_type</text>
+
+      <rect x="630" y="210" width="140" height="75" rx="5" fill="#1e2035" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="700" y="230" text-anchor="middle" fill="#f59e0b" font-weight="bold">pending_notifs</text>
+      <text x="640" y="250" fill="#a5b4fc">◆ workspace_id</text>
+      <text x="640" y="265" fill="#a5b4fc">◆ channel_id</text>
+      <text x="640" y="280" fill="#8892a4">  diffs_json</text>
+
+      <!-- color_cache -->
+      <rect x="630" y="315" width="140" height="75" rx="5" fill="#1e2035" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="700" y="335" text-anchor="middle" fill="#f59e0b" font-weight="bold">color_cache</text>
+      <text x="640" y="355" fill="#a5b4fc">◆ workspace_id</text>
+      <text x="640" y="370" fill="#a5b4fc">◆ calendar_id</text>
+      <text x="640" y="385" fill="#8892a4">  color_json</text>
+
+      <!-- Relationship lines -->
+      <!-- workspaces → caldav_credentials -->
+      <line x1="90" y1="140" x2="90" y2="175" stroke="#6366f1" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- workspaces → calendars -->
+      <line x1="170" y1="50" x2="220" y2="50" stroke="#6366f1" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- workspaces → channels -->
+      <line x1="170" y1="75" x2="195" y2="75" stroke="#6366f1" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="195" y1="75" x2="195" y2="240" stroke="#6366f1" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="195" y1="240" x2="220" y2="240" stroke="#6366f1" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- calendars → channel_calendars -->
+      <line x1="385" y1="65" x2="415" y2="65" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="415" y1="65" x2="415" y2="148" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="415" y1="148" x2="440" y2="148" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- channels → channel_calendars -->
+      <line x1="385" y1="240" x2="440" y2="162" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- Legend -->
+      <text x="10" y="405" fill="#6366f1" font-size="10">■ config tables</text>
+      <text x="110" y="405" fill="#f59e0b" font-size="10">■ operational tables</text>
+      <text x="250" y="405" fill="#10b981" font-size="10">■ join table</text>
+      <text x="340" y="405" fill="#8892a4" font-size="10">¹ encrypted in #45</text>
+      <text x="450" y="405" fill="#a5b4fc" font-size="10">◆ = part of primary key</text>
+    </svg>
+  </div>
+
+  <!-- ── 5. Migration Strategy ── -->
+  <h2 id="migration">Migration Strategy</h2>
+
+  <p>
+    <code>openDb()</code> reads <code>PRAGMA user_version</code> immediately after opening
+    the database. If the version is <code>0</code> (old single-tenant schema or a completely
+    fresh file), it runs the v1 migration inside a transaction.
+  </p>
+
+  <aside class="callout amber">
+    <strong>Data loss on upgrade:</strong> The migration drops the four old operational tables
+    (<code>events</code>, <code>color_cache</code>, <code>run_state</code>,
+    <code>pending_notifications</code>). This is intentional — v2 has never been deployed to
+    production, so no real data is at risk. Operational data regenerates on the next CalDAV
+    fetch and cron run. Config data is seeded via <code>seedWorkspace()</code>.
+  </aside>
+
+<pre><code>// Inside openDb(), after pragma WAL:
+const version = db.pragma('user_version', { simple: true });
+if (version === 0) {
+  db.exec(`
+    DROP TABLE IF EXISTS events;
+    DROP TABLE IF EXISTS color_cache;
+    DROP TABLE IF EXISTS run_state;
+    DROP TABLE IF EXISTS pending_notifications;
+    -- create all 9 tables with new schema
+    -- ...
+    PRAGMA user_version = 1;
+  `);
+}</code></pre>
+
+  <p>
+    Future schema changes increment <code>user_version</code> further (2, 3, …) with their
+    own migration blocks. This pattern is established here and used by all subsequent issues.
+  </p>
+
+  <!-- ── 6. db.js API ── -->
+  <h2 id="db-api">db.js API</h2>
+
+  <h3>Operational functions — signature changes</h3>
+
+  <p>All 8 existing functions gain <code>workspaceId</code> as the second parameter. Internally,
+  every SQL statement gains a <code>workspace_id = ?</code> clause.</p>
+
+  <pre><code>loadEvents(db, workspaceId, calendarId)          → {events, updated_at, last_error?} | null
+saveEvents(db, workspaceId, calendarId, events, errorState)
+loadColor(db, workspaceId, calendarId)           → {hex, emoji, source} | null
+saveColor(db, workspaceId, calendarId, color)
+loadRunState(db, workspaceId, channelId, digestType)  → Date | null
+saveRunState(db, workspaceId, channelId, digestType, timestamp)
+loadPending(db, workspaceId, channelId)          → {expired, diffs}
+savePending(db, workspaceId, channelId, diffs, createdAt?)</code></pre>
+
+  <h3>New workspace helpers</h3>
+
+  <pre><code>getWorkspace(db, workspaceId) → row | null
+// Returns full workspaces row for the given team_id, or null if not found.
+
+upsertWorkspace(db, { teamId, teamName, botToken, installedBy })
+// INSERT OR REPLACE into workspaces. Sets installed_at to current ISO timestamp.
+// Used by seedWorkspace() and later by OAuth callback (#46).</code></pre>
+
+  <aside class="callout green">
+    <strong>Removed:</strong> <code>migrateFromFlatFiles()</code> is deleted. The flat-file →
+    SQLite migration path predates v2 and is not needed in the multi-tenant deployment.
+  </aside>
+
+  <!-- ── 7. config.js API ── -->
+  <h2 id="config-api">config.js API</h2>
+
+  <h3>loadConfigFromDb(db, workspaceId)</h3>
+
+  <p>
+    Assembles the same config object shape that <code>loadConfig()</code> produces, sourcing
+    data from the new config tables. Throws a clear error if the workspace is not found.
+  </p>
+
+  <pre><code>async function loadConfigFromDb(db, workspaceId) {
+  // 1. getWorkspace(db, workspaceId) — throws if not found
+  // 2. SELECT from caldav_credentials WHERE workspace_id = ?
+  // 3. SELECT from calendars WHERE workspace_id = ? → build calendars dict
+  // 4. SELECT from channels WHERE workspace_id = ? → for each channel,
+  //    SELECT calendar_ids from channel_calendars → build channels array
+  // Returns:
+  return {
+    workspace_id: row.team_id,
+    locale: row.locale,         // from workspaces.locale
+    timezone: row.timezone,     // from workspaces.timezone
+    error_channel: row.error_channel,  // from workspaces.error_channel
+    caldav_credentials: { username, password },
+    calendars: { 'team': { name, caldav_url, caldav_metadata_url, color }, ... },
+    channels: [{ id, name, canvas_id, ..., calendars: ['team', 'vorstand'] }, ...]
+  };
+}</code></pre>
+
+  <aside class="callout">
+    <strong>Shape contract:</strong> The returned object must pass the existing
+    <code>validateConfig()</code> checks. This is verified in tests by calling
+    <code>validateConfig(loadConfigFromDb(db, workspaceId))</code> after seeding.
+  </aside>
+
+  <aside class="callout">
+    <strong>Workspace-level fields:</strong> <code>locale</code>, <code>timezone</code>,
+    <code>error_channel</code>, and <code>nextcloud_url</code> are stored as columns on the
+    <code>workspaces</code> table (not derived from channels). Channels may override
+    <code>locale</code> per-channel. <code>seedWorkspace()</code> reads these from the
+    top-level fields in <code>config.json</code> and writes them to the workspace row.
+  </aside>
+
+  <h3>seedWorkspace(db, workspaceId, configJson)</h3>
+
+  <p>
+    Imports a parsed <code>config.json</code> object into the new tables. Idempotent
+    (INSERT OR REPLACE throughout). Used for: bootstrapping the abeona workspace on first
+    v2 deploy, and providing test fixtures with known state.
+  </p>
+
+  <pre><code>function seedWorkspace(db, workspaceId, configJson) {
+  // 1. upsertWorkspace(db, { teamId: workspaceId, teamName: workspaceId, botToken: null, ... })
+  // 2. INSERT OR REPLACE INTO caldav_credentials (workspace_id, username, password)
+  // 3. For each calendar in configJson.calendars:
+  //      INSERT OR REPLACE INTO calendars (workspace_id, calendar_id, name, caldav_url, ...)
+  // 4. For each channel in configJson.channels:
+  //      INSERT OR REPLACE INTO channels (workspace_id, channel_id, name, canvas_id, ...)
+  //      For each calendarId in channel.calendars:
+  //        INSERT OR REPLACE INTO channel_calendars (workspace_id, channel_id, calendar_id)
+}</code></pre>
+
+  <h3>Existing functions kept</h3>
+  <ul>
+    <li><code>loadConfig(path)</code> — kept for the seeding path (<code>seedWorkspace(db, id, await loadConfig(path))</code>) and for <code>main</code> branch compatibility.</li>
+    <li><code>validateConfig(config)</code> — kept; used to verify <code>loadConfigFromDb</code> output in tests.</li>
+  </ul>
+
+  <!-- ── 8. Caller Updates ── -->
+  <h2 id="callers">Caller Updates</h2>
+
+  <p>
+    All callers that invoke db functions must thread <code>workspaceId</code> through.
+    The config object already carries <code>workspace_id</code> at the top level, so callers
+    use <code>config.workspace_id</code> wherever they call db functions.
+  </p>
+
+  <h3>server.js</h3>
+  <ul>
+    <li>Replace <code>await loadConfig(process.env.CONFIG_FILE)</code> with
+        <code>await loadConfigFromDb(db, workspaceId)</code>.</li>
+    <li>Read <code>workspaceId</code> from <code>process.env.WORKSPACE_ID</code> (single-workspace
+        mode) — multi-workspace iteration comes in #47.</li>
+    <li>All <code>runScheduledDigests</code> / <code>runChangeDetection</code> calls already receive
+        <code>config</code> and <code>db</code>; the db functions inside runner.js gain the
+        <code>workspaceId</code> arg there.</li>
+  </ul>
+
+  <h3>bot.js</h3>
+  <ul>
+    <li>Same pattern: <code>loadConfigFromDb(db, workspaceId)</code> replaces <code>loadConfig()</code>.</li>
+    <li><code>WORKSPACE_ID</code> env var required in addition to <code>DATA_DIR</code>.</li>
+  </ul>
+
+  <h3>runner.js</h3>
+  <ul>
+    <li>Every call to <code>loadEvents</code>, <code>saveEvents</code>, <code>loadColor</code>,
+        <code>saveColor</code>, <code>loadRunState</code>, <code>saveRunState</code>,
+        <code>loadPending</code>, <code>savePending</code> gains
+        <code>config.workspace_id</code> as the second argument.</li>
+    <li>No logic changes — purely a mechanical argument addition.</li>
+  </ul>
+
+  <!-- ── 9. Testing ── -->
+  <h2 id="testing">Testing</h2>
+
+  <h3>test/config-db.test.js (new)</h3>
+  <ul>
+    <li><code>loadConfigFromDb</code> returns correct object shape after seeding from a fixture config</li>
+    <li><code>seedWorkspace</code> is idempotent — safe to call twice with the same data</li>
+    <li><code>loadConfigFromDb</code> throws a clear error for an unknown <code>workspaceId</code></li>
+    <li>Round-trip: seed from fixture → load → compare all keys and representative values</li>
+    <li>Shape validation: <code>validateConfig(await loadConfigFromDb(db, id))</code> does not throw</li>
+  </ul>
+
+  <h3>test/db.test.js (updated)</h3>
+  <ul>
+    <li>All existing test calls gain <code>'T_TEST'</code> as the <code>workspaceId</code> argument</li>
+    <li>Schema test updated: verifies all 9 tables exist</li>
+    <li>New: <code>getWorkspace</code> returns null for unknown workspace</li>
+    <li>New: <code>upsertWorkspace</code> then <code>getWorkspace</code> round-trip</li>
+  </ul>
+
+  <p>All tests use <code>':memory:'</code> databases. No disk I/O in test suite.</p>
+
+  <!-- ── 10. Acceptance Criteria ── -->
+  <h2 id="ac">Acceptance Criteria</h2>
+
+  <ul>
+    <li>All existing tables have <code>workspace_id</code> column as part of primary key</li>
+    <li>Schema migration runs cleanly on an old (version 0) database and a fresh database</li>
+    <li>New config tables exist with correct schema and foreign key relationships</li>
+    <li><code>loadConfigFromDb(db, workspaceId)</code> returns same object shape as current <code>loadConfig()</code></li>
+    <li><code>seedWorkspace()</code> imports a <code>config.json</code> object into the new tables</li>
+    <li><code>seedWorkspace()</code> is idempotent</li>
+    <li>All <code>db.js</code> functions accept and use <code>workspaceId</code></li>
+    <li><code>migrateFromFlatFiles</code> is removed</li>
+    <li>All tests pass with <code>':memory:'</code> database</li>
+    <li><code>server.js</code> and <code>bot.js</code> use <code>loadConfigFromDb</code> instead of <code>loadConfig</code></li>
+    <li><code>runner.js</code> passes <code>config.workspace_id</code> to all db function calls</li>
+  </ul>
+
+</main>
+</body>
+</html>
