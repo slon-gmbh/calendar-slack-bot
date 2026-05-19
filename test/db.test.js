@@ -8,11 +8,18 @@ function memDb() {
 
 test('openDb creates schema tables', () => {
   const db = memDb();
-  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
-  assert.ok(tables.includes('events'));
-  assert.ok(tables.includes('color_cache'));
-  assert.ok(tables.includes('run_state'));
-  assert.ok(tables.includes('pending_notifications'));
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(r => r.name);
+  const expected = [
+    'caldav_credentials', 'calendars', 'channel_calendars', 'channels',
+    'color_cache', 'events', 'pending_notifications', 'run_state', 'workspaces'
+  ];
+  assert.deepStrictEqual(tables.sort(), expected);
+  db.close();
+});
+
+test('openDb sets schema user_version to 1', () => {
+  const db = memDb();
+  assert.strictEqual(db.pragma('user_version', { simple: true }), 1);
   db.close();
 });
 
