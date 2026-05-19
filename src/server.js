@@ -1,7 +1,7 @@
 const http = require('node:http');
 const path = require('node:path');
 const cron = require('node-cron');
-const { loadConfig } = require('./config.js');
+const { loadConfigFromDb } = require('./config.js');
 const { openDb } = require('./db.js');
 const { runScheduledDigests, runChangeDetection } = require('./runner.js');
 
@@ -38,13 +38,15 @@ function scheduleStringToCron(str) {
 }
 
 async function start() {
-  const config = await loadConfig(process.env.CONFIG_FILE);
-
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
 
+  const workspaceId = process.env.WORKSPACE_ID;
+  if (!workspaceId) throw new Error('WORKSPACE_ID environment variable not set');
+
   const dbPath = path.join(dataDir, 'bot.db');
   const db = openDb(dbPath);
+  const config = loadConfigFromDb(db, workspaceId);
 
   const jobs = [];
   const dryRun = process.env.DRY_RUN === 'true';

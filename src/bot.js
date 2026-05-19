@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const path = require('node:path');
-const { loadConfig } = require('./config.js');
+const { loadConfigFromDb } = require('./config.js');
 const { openDb } = require('./db.js');
 const {
   runScheduledDigests,
@@ -16,13 +16,15 @@ const mode = args.find(arg => arg.startsWith('--') && !arg.startsWith('--dry'));
 const dryRun = args.includes('--dry-run');
 
 async function main() {
-  const config = await loadConfig();
-
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
 
+  const workspaceId = process.env.WORKSPACE_ID;
+  if (!workspaceId) throw new Error('WORKSPACE_ID environment variable not set');
+
   const dbPath = path.join(dataDir, 'bot.db');
   const db = openDb(dbPath);
+  const config = loadConfigFromDb(db, workspaceId);
 
   if (mode === '--scheduled') {
     await runScheduledDigests(config, db, dryRun);
