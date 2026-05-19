@@ -126,13 +126,13 @@ function openDb(dbPath) {
 /**
  * Load cached events row for a calendar.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} calendarId
  * @returns {{events: Array, updated_at: string, last_error?: string, error_notified_at?: string}|null}
  */
-function loadEvents(db, calendarId) {
-  const row = db.prepare('SELECT * FROM events WHERE calendar_id = ?').get(calendarId);
+function loadEvents(db, workspaceId, calendarId) {
+  const row = db.prepare('SELECT * FROM events WHERE workspace_id = ? AND calendar_id = ?').get(workspaceId, calendarId);
   if (!row) return null;
-
   const events = JSON.parse(row.events_json).map(e => ({
     ...e,
     instances: (e.instances ?? []).map(inst => ({
@@ -141,7 +141,6 @@ function loadEvents(db, calendarId) {
       end: new Date(inst.end)
     }))
   }));
-
   const result = { events, updated_at: row.updated_at };
   if (row.last_error) result.last_error = row.last_error;
   if (row.error_notified_at) result.error_notified_at = row.error_notified_at;
@@ -151,20 +150,22 @@ function loadEvents(db, calendarId) {
 /**
  * Save events (and optional error state) for a calendar.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} calendarId
  * @param {Array} events
  * @param {{last_error?: string, error_notified_at?: string}|null} errorState
  */
-function saveEvents(db, calendarId, events, errorState) {
+function saveEvents(db, workspaceId, calendarId, events, errorState) {
   db.prepare(`
-    INSERT INTO events (calendar_id, events_json, last_error, error_notified_at, updated_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(calendar_id) DO UPDATE SET
+    INSERT INTO events (workspace_id, calendar_id, events_json, last_error, error_notified_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workspace_id, calendar_id) DO UPDATE SET
       events_json = excluded.events_json,
       last_error = excluded.last_error,
       error_notified_at = excluded.error_notified_at,
       updated_at = excluded.updated_at
   `).run(
+    workspaceId,
     calendarId,
     JSON.stringify(events || []),
     errorState?.last_error || null,
@@ -176,67 +177,71 @@ function saveEvents(db, calendarId, events, errorState) {
 /**
  * Load cached color for a calendar.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} calendarId
  * @returns {{hex: string, emoji: string, source: string}|null}
  */
-function loadColor(db, calendarId) {
-  const row = db.prepare('SELECT color_json FROM color_cache WHERE calendar_id = ?').get(calendarId);
+function loadColor(db, workspaceId, calendarId) {
+  const row = db.prepare('SELECT color_json FROM color_cache WHERE workspace_id = ? AND calendar_id = ?').get(workspaceId, calendarId);
   return row ? JSON.parse(row.color_json) : null;
 }
 
 /**
  * Save color for a calendar.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} calendarId
  * @param {{hex: string, emoji: string, source: string}} color
  */
-function saveColor(db, calendarId, color) {
+function saveColor(db, workspaceId, calendarId, color) {
   db.prepare(`
-    INSERT INTO color_cache (calendar_id, color_json, updated_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(calendar_id) DO UPDATE SET
+    INSERT INTO color_cache (workspace_id, calendar_id, color_json, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(workspace_id, calendar_id) DO UPDATE SET
       color_json = excluded.color_json,
       updated_at = excluded.updated_at
-  `).run(calendarId, JSON.stringify(color), new Date().toISOString());
+  `).run(workspaceId, calendarId, JSON.stringify(color), new Date().toISOString());
 }
 
 /**
  * Load last run timestamp for a channel digest.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} channelId
  * @param {'weekly'|'daily'} digestType
  * @returns {Date|null}
  */
-function loadRunState(db, channelId, digestType) {
-  const row = db.prepare('SELECT last_run FROM run_state WHERE channel_id = ? AND digest_type = ?').get(channelId, digestType);
+function loadRunState(db, workspaceId, channelId, digestType) {
+  const row = db.prepare('SELECT last_run FROM run_state WHERE workspace_id = ? AND channel_id = ? AND digest_type = ?').get(workspaceId, channelId, digestType);
   return row ? new Date(row.last_run) : null;
 }
 
 /**
  * Save last run timestamp for a channel digest.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} channelId
  * @param {'weekly'|'daily'} digestType
  * @param {Date} timestamp
  */
-function saveRunState(db, channelId, digestType, timestamp) {
+function saveRunState(db, workspaceId, channelId, digestType, timestamp) {
   db.prepare(`
-    INSERT INTO run_state (channel_id, digest_type, last_run)
-    VALUES (?, ?, ?)
-    ON CONFLICT(channel_id, digest_type) DO UPDATE SET last_run = excluded.last_run
-  `).run(channelId, digestType, timestamp.toISOString());
+    INSERT INTO run_state (workspace_id, channel_id, digest_type, last_run)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(workspace_id, channel_id, digest_type) DO UPDATE SET last_run = excluded.last_run
+  `).run(workspaceId, channelId, digestType, timestamp.toISOString());
 }
 
 /**
  * Load pending notifications for a channel.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} channelId
  * @returns {{expired: boolean, diffs: Array}}
  */
-function loadPending(db, channelId) {
-  const row = db.prepare('SELECT diffs_json, created_at FROM pending_notifications WHERE channel_id = ?').get(channelId);
+function loadPending(db, workspaceId, channelId) {
+  const row = db.prepare('SELECT diffs_json, created_at FROM pending_notifications WHERE workspace_id = ? AND channel_id = ?').get(workspaceId, channelId);
   if (!row) return { expired: false, diffs: [] };
-
   const ageSeconds = (Date.now() - new Date(row.created_at).getTime()) / 1000;
   const diffs = JSON.parse(row.diffs_json);
   return { expired: ageSeconds > 300, diffs };
@@ -245,18 +250,19 @@ function loadPending(db, channelId) {
 /**
  * Save pending notifications for a channel.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} channelId
  * @param {Array} diffs
  * @param {Date} [createdAt]
  */
-function savePending(db, channelId, diffs, createdAt = new Date()) {
+function savePending(db, workspaceId, channelId, diffs, createdAt = new Date()) {
   db.prepare(`
-    INSERT INTO pending_notifications (channel_id, diffs_json, created_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(channel_id) DO UPDATE SET
+    INSERT INTO pending_notifications (workspace_id, channel_id, diffs_json, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(workspace_id, channel_id) DO UPDATE SET
       diffs_json = excluded.diffs_json,
       created_at = excluded.created_at
-  `).run(channelId, JSON.stringify(diffs), createdAt.toISOString());
+  `).run(workspaceId, channelId, JSON.stringify(diffs), createdAt.toISOString());
 }
 
 /**
