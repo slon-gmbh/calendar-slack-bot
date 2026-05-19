@@ -1,6 +1,19 @@
 # Calendar Slack Bot
 
-GitHub Actions-based Slack bot that bridges Nextcloud CalDAV calendars with Slack channels.
+A Slack bot that bridges Nextcloud CalDAV calendars with Slack channels — posting weekly digests, daily summaries, and real-time change notifications.
+
+## Branches
+
+This repo has two long-lived branches with different architectures:
+
+| Branch | Approach | Status |
+|--------|----------|--------|
+| `main` | GitHub Actions, self-hosted | Stable — use this to run your own instance |
+| `v2` | Fly.io persistent server, multi-tenant SaaS | In development — the managed "Add to Slack" version |
+
+**`main` (this branch):** zero-infrastructure, runs entirely in GitHub Actions. Each community runs their own private fork. Full data control.
+
+**`v2`:** one central deployment, any Slack workspace installs via OAuth. Managed service.
 
 ## Features
 
@@ -146,7 +159,9 @@ Trigger manual workflow:
 
 ## Roadmap
 
-Development is tracked in the [GitHub Project — Calendar Slack Bot Roadmap](https://github.com/orgs/slon-gmbh/projects/12). Issues are planned across 5 two-week sprints (Apr 20 – Jun 28, 2026), covering: persistent server deployment, Slack slash command UI, multi-tenant storage, i18n, and launch.
+Development is tracked in the [GitHub Project — Calendar Slack Bot Roadmap](https://github.com/orgs/slon-gmbh/projects/12).
+
+Active milestone: **v1: multi-tenant Slack app** — rebuilding the bot as a proper installable Slack app on the `v2` branch. The self-hosted GitHub Actions approach on `main` will continue to be maintained.
 
 ## Upstream Updates
 
