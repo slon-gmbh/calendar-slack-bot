@@ -265,79 +265,81 @@ function loadConfigFromDb(db, workspaceId) {
  * @param {Object} configJson
  */
 function seedWorkspace(db, workspaceId, configJson) {
-  upsertWorkspace(db, {
-    teamId: workspaceId,
-    teamName: workspaceId,
-    locale: configJson.locale,
-    timezone: configJson.timezone || null,
-    errorChannel: configJson.error_channel || null,
-    nextcloudUrl: configJson.nextcloud_url || null
-  });
+  db.transaction(() => {
+    upsertWorkspace(db, {
+      teamId: workspaceId,
+      teamName: workspaceId,
+      locale: configJson.locale,
+      timezone: configJson.timezone || null,
+      errorChannel: configJson.error_channel || null,
+      nextcloudUrl: configJson.nextcloud_url || null
+    });
 
-  db.prepare(`
-    INSERT INTO caldav_credentials (workspace_id, username, password)
-    VALUES (?, ?, ?)
-    ON CONFLICT(workspace_id) DO UPDATE SET
-      username = excluded.username,
-      password = excluded.password
-  `).run(workspaceId, configJson.caldav_credentials.username, configJson.caldav_credentials.password);
-
-  for (const [calId, cal] of Object.entries(configJson.calendars)) {
     db.prepare(`
-      INSERT INTO calendars (workspace_id, calendar_id, name, caldav_url, caldav_metadata_url, color)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(workspace_id, calendar_id) DO UPDATE SET
-        name = excluded.name,
-        caldav_url = excluded.caldav_url,
-        caldav_metadata_url = excluded.caldav_metadata_url,
-        color = excluded.color
-    `).run(workspaceId, calId, cal.name, cal.caldav_url, cal.caldav_metadata_url || null, cal.color || null);
-  }
+      INSERT INTO caldav_credentials (workspace_id, username, password)
+      VALUES (?, ?, ?)
+      ON CONFLICT(workspace_id) DO UPDATE SET
+        username = excluded.username,
+        password = excluded.password
+    `).run(workspaceId, configJson.caldav_credentials.username, configJson.caldav_credentials.password);
 
-  for (const channel of configJson.channels) {
-    db.prepare(`
-      INSERT INTO channels (workspace_id, channel_id, name, canvas_id, canvas_url, locale, view, event_detail, digest_style, digest_format, digest_schedule, daily_digest_schedule, show_empty_days, notifications)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(workspace_id, channel_id) DO UPDATE SET
-        name = excluded.name,
-        canvas_id = excluded.canvas_id,
-        canvas_url = excluded.canvas_url,
-        locale = excluded.locale,
-        view = excluded.view,
-        event_detail = excluded.event_detail,
-        digest_style = excluded.digest_style,
-        digest_format = excluded.digest_format,
-        digest_schedule = excluded.digest_schedule,
-        daily_digest_schedule = excluded.daily_digest_schedule,
-        show_empty_days = excluded.show_empty_days,
-        notifications = excluded.notifications
-    `).run(
-      workspaceId, channel.id,
-      channel.name || null,
-      channel.canvas_id || null,
-      channel.canvas_url || null,
-      channel.locale || null,
-      channel.view || null,
-      channel.event_detail || null,
-      channel.digest_style || null,
-      channel.digest_format || null,
-      channel.digest_schedule || null,
-      channel.daily_digest_schedule === false ? null : (channel.daily_digest_schedule || null),
-      typeof channel.show_empty_days === 'boolean' ? (channel.show_empty_days ? 1 : 0) : null,
-      channel.notifications || null
-    );
-
-    db.prepare('DELETE FROM channel_calendars WHERE workspace_id = ? AND channel_id = ?')
-      .run(workspaceId, channel.id);
-
-    for (const calId of channel.calendars) {
+    for (const [calId, cal] of Object.entries(configJson.calendars)) {
       db.prepare(`
-        INSERT INTO channel_calendars (workspace_id, channel_id, calendar_id)
-        VALUES (?, ?, ?)
-        ON CONFLICT(workspace_id, channel_id, calendar_id) DO NOTHING
-      `).run(workspaceId, channel.id, calId);
+        INSERT INTO calendars (workspace_id, calendar_id, name, caldav_url, caldav_metadata_url, color)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, calendar_id) DO UPDATE SET
+          name = excluded.name,
+          caldav_url = excluded.caldav_url,
+          caldav_metadata_url = excluded.caldav_metadata_url,
+          color = excluded.color
+      `).run(workspaceId, calId, cal.name, cal.caldav_url, cal.caldav_metadata_url || null, cal.color || null);
     }
-  }
+
+    for (const channel of configJson.channels) {
+      db.prepare(`
+        INSERT INTO channels (workspace_id, channel_id, name, canvas_id, canvas_url, locale, view, event_detail, digest_style, digest_format, digest_schedule, daily_digest_schedule, show_empty_days, notifications)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, channel_id) DO UPDATE SET
+          name = excluded.name,
+          canvas_id = excluded.canvas_id,
+          canvas_url = excluded.canvas_url,
+          locale = excluded.locale,
+          view = excluded.view,
+          event_detail = excluded.event_detail,
+          digest_style = excluded.digest_style,
+          digest_format = excluded.digest_format,
+          digest_schedule = excluded.digest_schedule,
+          daily_digest_schedule = excluded.daily_digest_schedule,
+          show_empty_days = excluded.show_empty_days,
+          notifications = excluded.notifications
+      `).run(
+        workspaceId, channel.id,
+        channel.name || null,
+        channel.canvas_id || null,
+        channel.canvas_url || null,
+        channel.locale || null,
+        channel.view || null,
+        channel.event_detail || null,
+        channel.digest_style || null,
+        channel.digest_format || null,
+        channel.digest_schedule === false ? null : (channel.digest_schedule || null),
+        channel.daily_digest_schedule === false ? null : (channel.daily_digest_schedule || null),
+        typeof channel.show_empty_days === 'boolean' ? (channel.show_empty_days ? 1 : 0) : null,
+        channel.notifications || null
+      );
+
+      db.prepare('DELETE FROM channel_calendars WHERE workspace_id = ? AND channel_id = ?')
+        .run(workspaceId, channel.id);
+
+      for (const calId of channel.calendars) {
+        db.prepare(`
+          INSERT INTO channel_calendars (workspace_id, channel_id, calendar_id)
+          VALUES (?, ?, ?)
+          ON CONFLICT(workspace_id, channel_id, calendar_id) DO NOTHING
+        `).run(workspaceId, channel.id, calId);
+      }
+    }
+  })();
 }
 
 module.exports = {
