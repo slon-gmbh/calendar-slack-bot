@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const { loadConfig } = require('./config.js');
-const { openDb, migrateFromFlatFiles } = require('./db.js');
+const { openDb } = require('./db.js');
 const {
   runScheduledDigests,
   runWeeklyDigest,
@@ -23,9 +23,6 @@ async function main() {
 
   const dbPath = path.join(dataDir, 'bot.db');
   const db = openDb(dbPath);
-
-  const legacyDir = process.env.CACHE_DIR;
-  if (legacyDir) migrateFromFlatFiles(db, legacyDir);
 
   if (mode === '--scheduled') {
     await runScheduledDigests(config, db, dryRun);

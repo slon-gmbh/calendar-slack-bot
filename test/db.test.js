@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { openDb, loadEvents, saveEvents, loadColor, saveColor, loadRunState, saveRunState, loadPending, savePending } = require('../src/db.js');
+const { openDb, loadEvents, saveEvents, loadColor, saveColor, loadRunState, saveRunState, loadPending, savePending, getWorkspace, upsertWorkspace } = require('../src/db.js');
 
 function memDb() {
   return openDb(':memory:');
@@ -154,5 +154,35 @@ test('workspace isolation: pending_notifications not visible across workspaces',
   savePending(db, 'T_A', 'C123', [{ type: 'new' }], new Date());
   const result = loadPending(db, 'T_B', 'C123');
   assert.deepStrictEqual(result.diffs, []);
+  db.close();
+});
+
+test('getWorkspace returns null for unknown workspace', () => {
+  const db = memDb();
+  assert.strictEqual(getWorkspace(db, 'T_UNKNOWN'), null);
+  db.close();
+});
+
+test('upsertWorkspace and getWorkspace round-trip', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_123', teamName: 'Test Team', locale: 'de-DE', timezone: 'Europe/Berlin' });
+  const row = getWorkspace(db, 'T_123');
+  assert.ok(row);
+  assert.strictEqual(row.team_id, 'T_123');
+  assert.strictEqual(row.team_name, 'Test Team');
+  assert.strictEqual(row.locale, 'de-DE');
+  assert.strictEqual(row.timezone, 'Europe/Berlin');
+  assert.strictEqual(row.active, 1);
+  assert.ok(row.installed_at);
+  db.close();
+});
+
+test('upsertWorkspace is idempotent — bot_token not overwritten on re-upsert', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_123', teamName: 'Test Team', botToken: 'xoxb-secret' });
+  upsertWorkspace(db, { teamId: 'T_123', teamName: 'Updated Name' });
+  const row = getWorkspace(db, 'T_123');
+  assert.strictEqual(row.team_name, 'Updated Name');
+  assert.strictEqual(row.bot_token, 'xoxb-secret');  // preserved
   db.close();
 });

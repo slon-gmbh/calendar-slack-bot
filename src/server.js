@@ -2,7 +2,7 @@ const http = require('node:http');
 const path = require('node:path');
 const cron = require('node-cron');
 const { loadConfig } = require('./config.js');
-const { openDb, migrateFromFlatFiles } = require('./db.js');
+const { openDb } = require('./db.js');
 const { runScheduledDigests, runChangeDetection } = require('./runner.js');
 
 const DAY_MAP = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
@@ -45,9 +45,6 @@ async function start() {
 
   const dbPath = path.join(dataDir, 'bot.db');
   const db = openDb(dbPath);
-
-  const legacyDir = process.env.CACHE_DIR;
-  if (legacyDir) migrateFromFlatFiles(db, legacyDir);
 
   const jobs = [];
   const dryRun = process.env.DRY_RUN === 'true';

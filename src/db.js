@@ -1,6 +1,4 @@
 const Database = require('better-sqlite3');
-const { readdirSync, readFileSync, unlinkSync } = require('node:fs');
-const path = require('node:path');
 
 /**
  * Open (or create) a SQLite database, run schema migrations, and return the instance.
@@ -266,66 +264,32 @@ function savePending(db, workspaceId, channelId, diffs, createdAt = new Date()) 
 }
 
 /**
- * Migrate flat JSON files from a legacy cache directory into SQLite.
- * Imports events, colors, run state. Deletes migrated files on success.
- * Safe to call repeatedly — skips files already in DB.
+ * Get workspace row by team_id.
  * @param {import('better-sqlite3').Database} db
- * @param {string} legacyDir - Directory previously used as CACHE_DIR
+ * @param {string} workspaceId
+ * @returns {Object|null}
  */
-function migrateFromFlatFiles(db, legacyDir) {
-  let files;
-  try {
-    files = readdirSync(legacyDir);
-  } catch {
-    return;
-  }
+function getWorkspace(db, workspaceId) {
+  return db.prepare('SELECT * FROM workspaces WHERE team_id = ?').get(workspaceId) || null;
+}
 
-  for (const filename of files) {
-    const filePath = path.join(legacyDir, filename);
-
-    const runMatch = filename.match(/^\.lastrun-(.+)-(weekly|daily)\.json$/);
-    if (runMatch) {
-      try {
-        const data = JSON.parse(readFileSync(filePath, 'utf-8'));
-        if (data.lastRun) {
-          const existing = loadRunState(db, runMatch[1], runMatch[2]);
-          if (!existing) {
-            saveRunState(db, runMatch[1], runMatch[2], new Date(data.lastRun));
-            console.log(`[migration] Imported run state: ${filename}`);
-          }
-        }
-        unlinkSync(filePath);
-      } catch (err) {
-        console.warn(`[migration] Failed to migrate ${filename}: ${err.message}`);
-      }
-      continue;
-    }
-
-    if (filename.endsWith('.json') && !filename.startsWith('.')) {
-      const calendarId = filename.slice(0, -5);
-      try {
-        const data = JSON.parse(readFileSync(filePath, 'utf-8'));
-        const existing = loadEvents(db, calendarId);
-        if (!existing && data.events) {
-          saveEvents(db, calendarId, data.events, {
-            last_error: data.last_error || null,
-            error_notified_at: data.error_notified_at || null
-          });
-          console.log(`[migration] Imported events: ${filename}`);
-        }
-        if (data.color) {
-          const existingColor = loadColor(db, calendarId);
-          if (!existingColor) {
-            saveColor(db, calendarId, data.color);
-            console.log(`[migration] Imported color: ${filename}`);
-          }
-        }
-        unlinkSync(filePath);
-      } catch (err) {
-        console.warn(`[migration] Failed to migrate ${filename}: ${err.message}`);
-      }
-    }
-  }
+/**
+ * Insert or update a workspace. bot_token is preserved on conflict (not overwritten).
+ * @param {import('better-sqlite3').Database} db
+ * @param {{ teamId: string, teamName?: string, botToken?: string, installedBy?: string, locale?: string, timezone?: string, errorChannel?: string, nextcloudUrl?: string }} opts
+ */
+function upsertWorkspace(db, { teamId, teamName, botToken = null, installedBy = null, locale = null, timezone = null, errorChannel = null, nextcloudUrl = null }) {
+  db.prepare(`
+    INSERT INTO workspaces (team_id, team_name, bot_token, installed_by, installed_at, active, locale, timezone, error_channel, nextcloud_url)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+    ON CONFLICT(team_id) DO UPDATE SET
+      team_name     = excluded.team_name,
+      locale        = excluded.locale,
+      timezone      = excluded.timezone,
+      error_channel = excluded.error_channel,
+      nextcloud_url = excluded.nextcloud_url,
+      active        = excluded.active
+  `).run(teamId, teamName || teamId, botToken, installedBy, new Date().toISOString(), locale, timezone, errorChannel, nextcloudUrl);
 }
 
 module.exports = {
@@ -338,5 +302,6 @@ module.exports = {
   saveRunState,
   loadPending,
   savePending,
-  migrateFromFlatFiles
+  getWorkspace,
+  upsertWorkspace
 };
