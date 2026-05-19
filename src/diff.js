@@ -174,23 +174,25 @@ function detectChanges(oldEvent, newEvent) {
 }
 
 /**
- * Load pending notifications for a channel from SQLite.
+ * Load pending notifications for a channel.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} channelId
  * @returns {{expired: boolean, diffs: Array}}
  */
-function loadPendingNotifications(db, channelId) {
-  return loadPending(db, channelId);
+function loadPendingNotifications(db, workspaceId, channelId) {
+  return loadPending(db, workspaceId, channelId);
 }
 
 /**
- * Save pending notifications for a channel to SQLite.
+ * Save pending notifications for a channel.
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {string} channelId
  * @param {Array} diffs
  */
-function savePendingNotifications(db, channelId, diffs) {
-  savePending(db, channelId, diffs);
+function savePendingNotifications(db, workspaceId, channelId, diffs) {
+  savePending(db, workspaceId, channelId, diffs);
 }
 
 module.exports = {

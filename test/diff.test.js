@@ -444,8 +444,8 @@ test('diffEvents should handle malformed RRULE in both old and new (issue #16)',
 test('savePendingNotifications and loadPendingNotifications round-trip within window', () => {
   const db = openDb(':memory:');
   const diffs = [{ type: 'new', event: { id: 'e1', title: 'New' } }];
-  savePendingNotifications(db, 'C123', diffs);
-  const result = loadPendingNotifications(db, 'C123');
+  savePendingNotifications(db, 'T_TEST', 'C123', diffs);
+  const result = loadPendingNotifications(db, 'T_TEST', 'C123');
   assert.strictEqual(result.expired, false);
   assert.strictEqual(result.diffs.length, 1);
   assert.strictEqual(result.diffs[0].type, 'new');
@@ -454,8 +454,16 @@ test('savePendingNotifications and loadPendingNotifications round-trip within wi
 
 test('loadPendingNotifications returns empty for unknown channel', () => {
   const db = openDb(':memory:');
-  const result = loadPendingNotifications(db, 'C999');
+  const result = loadPendingNotifications(db, 'T_TEST', 'C999');
   assert.strictEqual(result.expired, false);
+  assert.deepStrictEqual(result.diffs, []);
+  db.close();
+});
+
+test('workspace isolation: pending notifications not visible across workspaces', () => {
+  const db = openDb(':memory:');
+  savePendingNotifications(db, 'T_A', 'C123', [{ type: 'new' }]);
+  const result = loadPendingNotifications(db, 'T_B', 'C123');
   assert.deepStrictEqual(result.diffs, []);
   db.close();
 });
