@@ -126,3 +126,33 @@ test('savePending second write overwrites first (upsert resets timer)', () => {
   assert.strictEqual(result.diffs[0].type, 'deleted');
   db.close();
 });
+
+test('workspace isolation: events not visible across workspaces', () => {
+  const db = memDb();
+  const events = [{ id: 'e1', instances: [] }];
+  saveEvents(db, 'T_A', 'cal-1', events, null);
+  assert.strictEqual(loadEvents(db, 'T_B', 'cal-1'), null);
+  db.close();
+});
+
+test('workspace isolation: colors not visible across workspaces', () => {
+  const db = memDb();
+  saveColor(db, 'T_A', 'cal-1', { hex: '#ff0000', emoji: ':red:', source: 'caldav' });
+  assert.strictEqual(loadColor(db, 'T_B', 'cal-1'), null);
+  db.close();
+});
+
+test('workspace isolation: run_state not visible across workspaces', () => {
+  const db = memDb();
+  saveRunState(db, 'T_A', 'C123', 'weekly', new Date('2026-05-01T00:00:00Z'));
+  assert.strictEqual(loadRunState(db, 'T_B', 'C123', 'weekly'), null);
+  db.close();
+});
+
+test('workspace isolation: pending_notifications not visible across workspaces', () => {
+  const db = memDb();
+  savePending(db, 'T_A', 'C123', [{ type: 'new' }], new Date());
+  const result = loadPending(db, 'T_B', 'C123');
+  assert.deepStrictEqual(result.diffs, []);
+  db.close();
+});
