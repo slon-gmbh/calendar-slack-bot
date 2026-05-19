@@ -1,4 +1,5 @@
 const { readFile } = require('node:fs/promises');
+const { getWorkspace, upsertWorkspace } = require('./db.js');
 
 /**
  * Load and validate configuration from file
@@ -194,7 +195,154 @@ function validateScheduleFormat(schedule, fieldName) {
   }
 }
 
+/**
+ * Load workspace config from SQLite, returning same shape as loadConfig().
+ * Throws if workspace is not found.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
+ * @returns {Object}
+ */
+function loadConfigFromDb(db, workspaceId) {
+  const workspace = getWorkspace(db, workspaceId);
+  if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
+
+  const creds = db.prepare('SELECT username, password FROM caldav_credentials WHERE workspace_id = ?').get(workspaceId);
+  if (!creds) throw new Error(`No CalDAV credentials for workspace: ${workspaceId}`);
+
+  const calRows = db.prepare('SELECT * FROM calendars WHERE workspace_id = ?').all(workspaceId);
+  const calendars = {};
+  for (const row of calRows) {
+    calendars[row.calendar_id] = {
+      name: row.name,
+      caldav_url: row.caldav_url,
+      ...(row.caldav_metadata_url ? { caldav_metadata_url: row.caldav_metadata_url } : {}),
+      ...(row.color ? { color: row.color } : {})
+    };
+  }
+
+  const channelRows = db.prepare('SELECT * FROM channels WHERE workspace_id = ?').all(workspaceId);
+  const channels = [];
+  for (const row of channelRows) {
+    const calendarIds = db.prepare('SELECT calendar_id FROM channel_calendars WHERE workspace_id = ? AND channel_id = ?')
+      .all(workspaceId, row.channel_id)
+      .map(r => r.calendar_id);
+
+    channels.push({
+      id: row.channel_id,
+      ...(row.name ? { name: row.name } : {}),
+      canvas_id: row.canvas_id,
+      ...(row.canvas_url ? { canvas_url: row.canvas_url } : {}),
+      ...(row.locale ? { locale: row.locale } : {}),
+      ...(row.view ? { view: row.view } : {}),
+      ...(row.event_detail ? { event_detail: row.event_detail } : {}),
+      ...(row.digest_style ? { digest_style: row.digest_style } : {}),
+      ...(row.digest_format ? { digest_format: row.digest_format } : {}),
+      digest_schedule: row.digest_schedule || false,
+      daily_digest_schedule: row.daily_digest_schedule || false,
+      show_empty_days: row.show_empty_days !== null ? Boolean(row.show_empty_days) : false,
+      ...(row.notifications ? { notifications: row.notifications } : {}),
+      calendars: calendarIds
+    });
+  }
+
+  return {
+    workspace_id: workspace.team_id,
+    locale: workspace.locale,
+    ...(workspace.timezone ? { timezone: workspace.timezone } : {}),
+    ...(workspace.error_channel ? { error_channel: workspace.error_channel } : {}),
+    ...(workspace.nextcloud_url ? { nextcloud_url: workspace.nextcloud_url } : {}),
+    caldav_credentials: { username: creds.username, password: creds.password },
+    calendars,
+    channels
+  };
+}
+
+/**
+ * Import a parsed config.json object into the multi-tenant tables. Idempotent.
+ * Call with the output of loadConfig() so env vars are already resolved.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
+ * @param {Object} configJson
+ */
+function seedWorkspace(db, workspaceId, configJson) {
+  upsertWorkspace(db, {
+    teamId: workspaceId,
+    teamName: workspaceId,
+    locale: configJson.locale,
+    timezone: configJson.timezone || null,
+    errorChannel: configJson.error_channel || null,
+    nextcloudUrl: configJson.nextcloud_url || null
+  });
+
+  db.prepare(`
+    INSERT INTO caldav_credentials (workspace_id, username, password)
+    VALUES (?, ?, ?)
+    ON CONFLICT(workspace_id) DO UPDATE SET
+      username = excluded.username,
+      password = excluded.password
+  `).run(workspaceId, configJson.caldav_credentials.username, configJson.caldav_credentials.password);
+
+  for (const [calId, cal] of Object.entries(configJson.calendars)) {
+    db.prepare(`
+      INSERT INTO calendars (workspace_id, calendar_id, name, caldav_url, caldav_metadata_url, color)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, calendar_id) DO UPDATE SET
+        name = excluded.name,
+        caldav_url = excluded.caldav_url,
+        caldav_metadata_url = excluded.caldav_metadata_url,
+        color = excluded.color
+    `).run(workspaceId, calId, cal.name, cal.caldav_url, cal.caldav_metadata_url || null, cal.color || null);
+  }
+
+  for (const channel of configJson.channels) {
+    db.prepare(`
+      INSERT INTO channels (workspace_id, channel_id, name, canvas_id, canvas_url, locale, view, event_detail, digest_style, digest_format, digest_schedule, daily_digest_schedule, show_empty_days, notifications)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, channel_id) DO UPDATE SET
+        name = excluded.name,
+        canvas_id = excluded.canvas_id,
+        canvas_url = excluded.canvas_url,
+        locale = excluded.locale,
+        view = excluded.view,
+        event_detail = excluded.event_detail,
+        digest_style = excluded.digest_style,
+        digest_format = excluded.digest_format,
+        digest_schedule = excluded.digest_schedule,
+        daily_digest_schedule = excluded.daily_digest_schedule,
+        show_empty_days = excluded.show_empty_days,
+        notifications = excluded.notifications
+    `).run(
+      workspaceId, channel.id,
+      channel.name || null,
+      channel.canvas_id || null,
+      channel.canvas_url || null,
+      channel.locale || null,
+      channel.view || null,
+      channel.event_detail || null,
+      channel.digest_style || null,
+      channel.digest_format || null,
+      channel.digest_schedule || null,
+      channel.daily_digest_schedule === false ? null : (channel.daily_digest_schedule || null),
+      typeof channel.show_empty_days === 'boolean' ? (channel.show_empty_days ? 1 : 0) : null,
+      channel.notifications || null
+    );
+
+    db.prepare('DELETE FROM channel_calendars WHERE workspace_id = ? AND channel_id = ?')
+      .run(workspaceId, channel.id);
+
+    for (const calId of channel.calendars) {
+      db.prepare(`
+        INSERT INTO channel_calendars (workspace_id, channel_id, calendar_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(workspace_id, channel_id, calendar_id) DO NOTHING
+      `).run(workspaceId, channel.id, calId);
+    }
+  }
+}
+
 module.exports = {
   loadConfig,
-  validateConfig
+  validateConfig,
+  loadConfigFromDb,
+  seedWorkspace
 };
