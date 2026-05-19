@@ -73,3 +73,11 @@ test('loadCacheState returns null color when none saved', () => {
   assert.strictEqual(result.color, null);
   db.close();
 });
+
+test('workspace isolation: cache state not visible across workspaces', () => {
+  const db = memDb();
+  const events = [{ id: 'e1', instances: [] }];
+  saveCacheState(db, 'T_A', 'cal-1', events, null, null);
+  assert.strictEqual(loadCacheState(db, 'T_B', 'cal-1'), null);
+  db.close();
+});
