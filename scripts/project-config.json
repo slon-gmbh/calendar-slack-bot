@@ -1,0 +1,50 @@
+{
+  "owner": "slon-gmbh",
+  "projectNumber": 12,
+  "projectId": "PVT_kwDOAlSEx84BVFvG",
+  "fields": {
+    "priority": {
+      "id": "PVTSSF_lADOAlSEx84BVFvGzhTKl-k",
+      "options": {
+        "P0": "8035f5a9",
+        "P1": "bb71e850",
+        "P2": "badb7c13"
+      }
+    },
+    "size": {
+      "id": "PVTSSF_lADOAlSEx84BVFvGzhTKmCY",
+      "options": {
+        "XS": "aefeae2b",
+        "S": "8810c6a0",
+        "M": "1c99fcd3",
+        "L": "de3fa6b7",
+        "XL": "35f2c1e1"
+      }
+    },
+    "status": {
+      "id": "PVTSSF_lADOAlSEx84BVFvGzhQj4bA",
+      "options": {
+        "Todo": "f75ad846",
+        "In Progress": "47fc9ee4",
+        "Done": "98236657"
+      }
+    },
+    "sprint": {
+      "id": "PVTIF_lADOAlSEx84BVFvGzhQj608"
+    },
+    "startDate": {
+      "id": "PVTF_lADOAlSEx84BVFvGzhQj45A"
+    },
+    "targetDate": {
+      "id": "PVTF_lADOAlSEx84BVFvGzhQj45E"
+    },
+    "lastReviewed": {
+      "id": "PVTF_lADOAlSEx84BVFvGzhTKmCc"
+    }
+  },
+  "scoring": {
+    "priorityWeight": { "P0": 100, "P1": 50, "P2": 20 },
+    "sizeBonus":      { "XS": 35, "S": 20, "M": 8, "L": 3, "XL": 0 },
+    "sizeDays":       { "XS": 1, "S": 2, "M": 5, "L": 10, "XL": 15 }
+  }
+}
