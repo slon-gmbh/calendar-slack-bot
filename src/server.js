@@ -5,6 +5,7 @@ const { loadConfigFromDb } = require('./config.js');
 const { openDb } = require('./db.js');
 const { runScheduledDigests, runChangeDetection } = require('./runner.js');
 const { validateEncryptionKey } = require('./crypto.js');
+const { validateSlackEnvVars, handleOAuthRequest } = require('./oauth.js');
 
 const DAY_MAP = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
@@ -40,6 +41,7 @@ function scheduleStringToCron(str) {
 
 async function start() {
   validateEncryptionKey();
+  validateSlackEnvVars();
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
 
@@ -93,10 +95,12 @@ async function start() {
   }));
 
   const port = parseInt(process.env.PORT || '8080', 10);
-  const httpServer = http.createServer((req, res) => {
+  const httpServer = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
+    } else if (await handleOAuthRequest(db, req, res)) {
+      // handled by oauth.js
     } else {
       res.writeHead(404);
       res.end();
