@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { loadConfigFromDb } = require('./config.js');
 const { openDb } = require('./db.js');
+const { validateEncryptionKey } = require('./crypto.js');
 const {
   runScheduledDigests,
   runWeeklyDigest,
@@ -16,6 +17,7 @@ const mode = args.find(arg => arg.startsWith('--') && !arg.startsWith('--dry'));
 const dryRun = args.includes('--dry-run');
 
 async function main() {
+  validateEncryptionKey();
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
 
