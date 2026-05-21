@@ -3,6 +3,8 @@ const assert = require('node:assert');
 const { openDb } = require('../src/db.js');
 const { loadConfigFromDb, seedWorkspace, validateConfig } = require('../src/config.js');
 
+process.env.ENCRYPTION_KEY = '0'.repeat(64);
+
 const FIXTURE_CONFIG = {
   workspace_id: 'T_TEST',
   locale: 'en-US',
@@ -46,7 +48,8 @@ test('seedWorkspace inserts all config data into the database', () => {
 
   const creds = db.prepare('SELECT * FROM caldav_credentials WHERE workspace_id = ?').get('T_TEST');
   assert.strictEqual(creds.username, 'admin');
-  assert.strictEqual(creds.password, 'secret');
+  assert.notStrictEqual(creds.password, 'secret');
+  assert.ok(creds.password.includes(':'), 'stored password must be in iv:ct:tag format');
 
   const cals = db.prepare('SELECT * FROM calendars WHERE workspace_id = ? ORDER BY calendar_id').all('T_TEST');
   assert.strictEqual(cals.length, 2);

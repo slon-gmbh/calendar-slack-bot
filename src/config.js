@@ -1,5 +1,5 @@
 const { readFile } = require('node:fs/promises');
-const { getWorkspace, upsertWorkspace } = require('./db.js');
+const { getWorkspace, upsertWorkspace, upsertCaldavCredentials, getCaldavCredentials } = require('./db.js');
 
 /**
  * Load and validate configuration from file
@@ -206,7 +206,7 @@ function loadConfigFromDb(db, workspaceId) {
   const workspace = getWorkspace(db, workspaceId);
   if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
 
-  const creds = db.prepare('SELECT username, password FROM caldav_credentials WHERE workspace_id = ?').get(workspaceId);
+  const creds = getCaldavCredentials(db, workspaceId);
   if (!creds) throw new Error(`No CalDAV credentials for workspace: ${workspaceId}`);
 
   const calRows = db.prepare('SELECT * FROM calendars WHERE workspace_id = ?').all(workspaceId);
@@ -275,13 +275,7 @@ function seedWorkspace(db, workspaceId, configJson) {
       nextcloudUrl: configJson.nextcloud_url || null
     });
 
-    db.prepare(`
-      INSERT INTO caldav_credentials (workspace_id, username, password)
-      VALUES (?, ?, ?)
-      ON CONFLICT(workspace_id) DO UPDATE SET
-        username = excluded.username,
-        password = excluded.password
-    `).run(workspaceId, configJson.caldav_credentials.username, configJson.caldav_credentials.password);
+    upsertCaldavCredentials(db, workspaceId, configJson.caldav_credentials.username, configJson.caldav_credentials.password);
 
     for (const [calId, cal] of Object.entries(configJson.calendars)) {
       db.prepare(`
