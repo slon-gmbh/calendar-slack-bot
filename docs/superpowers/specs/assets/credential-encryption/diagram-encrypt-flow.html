@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Credential Encryption — Data Flow</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; margin: 0; padding: 24px; }
+  h2 { color: #a78bfa; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 24px; }
+  svg { width: 100%; max-width: 860px; display: block; margin: 0 auto; }
+  .label { font-size: 12px; fill: #94a3b8; }
+  .module { font-size: 13px; font-weight: 600; fill: #e2e8f0; }
+  .fn { font-size: 11px; fill: #7dd3fc; font-family: 'Courier New', monospace; }
+  .note { font-size: 10px; fill: #64748b; }
+  .arrow { stroke: #475569; stroke-width: 1.5; fill: none; marker-end: url(#arr); }
+  .arrow-enc { stroke: #f59e0b; stroke-width: 1.5; fill: none; marker-end: url(#arr-enc); }
+  .arrow-dec { stroke: #34d399; stroke-width: 1.5; fill: none; marker-end: url(#arr-dec); }
+  .badge-enc { fill: #92400e; }
+  .badge-dec { fill: #064e3b; }
+  .badge-plain { fill: #1e3a5f; }
+  .badge-text { font-size: 10px; fill: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+<h2>Encryption / Decryption Data Flow</h2>
+<svg viewBox="0 0 860 540" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#475569"/>
+    </marker>
+    <marker id="arr-enc" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f59e0b"/>
+    </marker>
+    <marker id="arr-dec" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#34d399"/>
+    </marker>
+  </defs>
+
+  <!-- WRITE PATH -->
+  <text x="30" y="30" class="label" font-size="11" fill="#a78bfa" font-weight="700">WRITE PATH</text>
+
+  <!-- caller box -->
+  <rect x="30" y="44" width="140" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="100" y="68" class="module" text-anchor="middle">server.js</text>
+  <text x="100" y="84" class="fn" text-anchor="middle">/ OAuth handler</text>
+
+  <!-- db.js box -->
+  <rect x="250" y="44" width="200" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="350" y="64" class="module" text-anchor="middle">db.js</text>
+  <text x="350" y="80" class="fn" text-anchor="middle">upsertWorkspace()</text>
+  <text x="350" y="96" class="fn" text-anchor="middle">upsertCaldavCredentials()</text>
+
+  <!-- crypto.js box -->
+  <rect x="530" y="44" width="160" height="56" rx="8" fill="#312e81" stroke="#4f46e5"/>
+  <text x="610" y="68" class="module" text-anchor="middle">crypto.js</text>
+  <text x="610" y="84" class="fn" text-anchor="middle">encrypt(plaintext)</text>
+
+  <!-- SQLite box -->
+  <rect x="770" y="44" width="70" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="805" y="72" class="module" text-anchor="middle" font-size="12">SQLite</text>
+
+  <!-- arrows write path -->
+  <line x1="170" y1="72" x2="248" y2="72" class="arrow"/>
+  <text x="209" y="66" class="note" text-anchor="middle">plaintext</text>
+
+  <line x1="450" y1="72" x2="528" y2="72" class="arrow-enc"/>
+  <text x="489" y="66" class="note" text-anchor="middle">plaintext</text>
+
+  <line x1="690" y1="72" x2="768" y2="72" class="arrow-enc"/>
+  <!-- encrypted badge -->
+  <rect x="693" y="55" width="70" height="14" rx="4" class="badge-enc"/>
+  <text x="728" y="66" class="badge-text" text-anchor="middle">iv:ct:tag</text>
+
+  <!-- READ PATH -->
+  <text x="30" y="160" class="label" font-size="11" fill="#a78bfa" font-weight="700">READ PATH</text>
+
+  <!-- caller box read -->
+  <rect x="30" y="174" width="140" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="100" y="198" class="module" text-anchor="middle">config.js</text>
+  <text x="100" y="214" class="fn" text-anchor="middle">loadConfigFromDb()</text>
+
+  <!-- db.js read box -->
+  <rect x="250" y="174" width="200" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="350" y="194" class="module" text-anchor="middle">db.js</text>
+  <text x="350" y="210" class="fn" text-anchor="middle">getWorkspace()</text>
+  <text x="350" y="226" class="fn" text-anchor="middle">getCaldavCredentials()</text>
+
+  <!-- crypto.js read box -->
+  <rect x="530" y="174" width="160" height="56" rx="8" fill="#064e3b" stroke="#10b981"/>
+  <text x="610" y="198" class="module" text-anchor="middle">crypto.js</text>
+  <text x="610" y="214" class="fn" text-anchor="middle">decrypt(ciphertext)</text>
+
+  <!-- SQLite read box -->
+  <rect x="770" y="174" width="70" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="805" y="202" class="module" text-anchor="middle" font-size="12">SQLite</text>
+
+  <!-- arrows read path (right to left) -->
+  <line x1="768" y1="202" x2="692" y2="202" class="arrow-dec"/>
+  <!-- encrypted badge -->
+  <rect x="697" y="185" width="70" height="14" rx="4" class="badge-enc"/>
+  <text x="732" y="196" class="badge-text" text-anchor="middle">iv:ct:tag</text>
+
+  <line x1="528" y1="202" x2="452" y2="202" class="arrow-dec"/>
+  <text x="490" y="196" class="note" text-anchor="middle">plaintext</text>
+
+  <line x1="248" y1="202" x2="172" y2="202" class="arrow"/>
+  <text x="210" y="196" class="note" text-anchor="middle">plaintext</text>
+
+  <!-- STARTUP VALIDATION -->
+  <text x="30" y="290" class="label" font-size="11" fill="#a78bfa" font-weight="700">STARTUP VALIDATION</text>
+
+  <rect x="30" y="304" width="140" height="56" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="100" y="328" class="module" text-anchor="middle">server.js</text>
+  <text x="100" y="344" class="fn" text-anchor="middle">start()</text>
+
+  <rect x="250" y="304" width="200" height="56" rx="8" fill="#312e81" stroke="#4f46e5"/>
+  <text x="350" y="324" class="module" text-anchor="middle">crypto.js</text>
+  <text x="350" y="340" class="fn" text-anchor="middle">validateEncryptionKey()</text>
+  <text x="350" y="356" class="note" text-anchor="middle">32-byte hex (64 chars)</text>
+
+  <line x1="170" y1="332" x2="248" y2="332" class="arrow"/>
+
+  <!-- fail fast box -->
+  <rect x="530" y="304" width="180" height="56" rx="8" fill="#450a0a" stroke="#dc2626"/>
+  <text x="620" y="324" class="module" text-anchor="middle" fill="#fca5a5">process.exit(1)</text>
+  <text x="620" y="340" class="fn" text-anchor="middle" fill="#fca5a5">ENCRYPTION_KEY missing</text>
+  <text x="620" y="356" class="note" text-anchor="middle" fill="#f87171">or not 64 hex chars</text>
+
+  <line x1="450" y1="332" x2="528" y2="332" class="arrow"/>
+  <text x="489" y="326" class="note" text-anchor="middle" fill="#dc2626">invalid →</text>
+
+  <!-- CIPHERTEXT FORMAT -->
+  <text x="30" y="420" class="label" font-size="11" fill="#a78bfa" font-weight="700">CIPHERTEXT FORMAT (stored in TEXT column)</text>
+
+  <rect x="30" y="434" width="790" height="64" rx="8" fill="#1e293b" stroke="#4f46e5"/>
+
+  <rect x="50" y="450" width="120" height="30" rx="4" fill="#312e81"/>
+  <text x="110" y="470" class="fn" text-anchor="middle" font-size="12">IV (12 bytes)</text>
+  <text x="110" y="482" class="note" text-anchor="middle">24 hex chars</text>
+
+  <text x="178" y="468" fill="#475569" font-size="20" text-anchor="middle">:</text>
+
+  <rect x="200" y="450" width="420" height="30" rx="4" fill="#1e3a5f"/>
+  <text x="410" y="470" class="fn" text-anchor="middle" font-size="12">ciphertext (variable length)</text>
+  <text x="410" y="482" class="note" text-anchor="middle">hex encoded</text>
+
+  <text x="628" y="468" fill="#475569" font-size="20" text-anchor="middle">:</text>
+
+  <rect x="648" y="450" width="150" height="30" rx="4" fill="#064e3b"/>
+  <text x="723" y="470" class="fn" text-anchor="middle" font-size="12">auth tag (16 bytes)</text>
+  <text x="723" y="482" class="note" text-anchor="middle">32 hex chars</text>
+
+  <!-- legend -->
+  <rect x="30" y="512" width="12" height="12" rx="2" fill="#f59e0b" opacity="0.6"/>
+  <text x="48" y="523" class="note">encrypt path</text>
+  <rect x="120" y="512" width="12" height="12" rx="2" fill="#34d399" opacity="0.6"/>
+  <text x="138" y="523" class="note">decrypt path</text>
+  <rect x="210" y="512" width="12" height="12" rx="2" fill="#4f46e5" opacity="0.6"/>
+  <text x="228" y="523" class="note">crypto.js</text>
+  <rect x="290" y="512" width="12" height="12" rx="2" fill="#334155"/>
+  <text x="308" y="523" class="note">other module</text>
+</svg>
+</body>
+</html>
