@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OAuth Installation — Implementation Plan</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1e293b;
+    --surface2: #0d1627;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --purple: #a78bfa;
+    --blue: #7dd3fc;
+    --green: #34d399;
+    --amber: #f59e0b;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+
+  /* Sticky sidebar */
+  nav {
+    position: sticky; top: 0; height: 100vh; width: 200px; flex-shrink: 0;
+    background: var(--surface2); border-right: 1px solid var(--border);
+    padding: 20px 14px; overflow-y: auto;
+  }
+  nav h3 { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); margin-bottom: 10px; }
+  nav a { display: block; font-size: 0.75rem; color: var(--muted); text-decoration: none; padding: 3px 8px; border-radius: 4px; margin-bottom: 1px; }
+  nav a:hover { background: var(--surface); color: var(--text); }
+  nav .sep { border-top: 1px solid var(--border); margin: 8px 0; }
+
+  /* Main */
+  main { flex: 1; max-width: 860px; padding: 36px 44px; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .meta { font-size: 0.78rem; color: var(--dim); margin-bottom: 28px; }
+
+  /* Phase overview strip */
+  .phases { display: flex; gap: 8px; margin-bottom: 32px; }
+  .phase-card {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; text-align: center;
+  }
+  .phase-card .phase-num { font-size: 0.65rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+  .phase-card .phase-name { font-size: 0.8rem; color: var(--text); font-weight: 600; margin: 4px 0; }
+  .phase-card .phase-files { font-size: 0.68rem; color: var(--blue); font-family: monospace; }
+  .phase-card.done { border-color: var(--green); }
+  .phase-card.active { border-color: var(--amber); }
+  .phase-card.pending { opacity: 0.55; }
+
+  /* Dependency SVG */
+  .dep-wrap { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 32px; }
+  .dep-wrap h3 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); margin-bottom: 12px; }
+
+  /* Task cards */
+  h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--purple); margin: 32px 0 14px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .task-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 16px; overflow: hidden;
+  }
+  .task-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+  .task-num { font-size: 0.7rem; color: var(--dim); font-weight: 700; min-width: 56px; }
+  .task-title { font-size: 0.9rem; color: var(--text); font-weight: 600; flex: 1; }
+  .badge { display: inline-block; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .badge-todo { background: #1c1507; color: var(--amber); border: 1px solid #78350f; }
+  .badge-done { background: #064e3b; color: var(--green); border: 1px solid #065f46; }
+  .badge-new  { background: #064e3b; color: var(--green); }
+  .badge-mod  { background: #0a1a2e; color: var(--blue); }
+  .badge-test { background: #1c1507; color: var(--amber); }
+
+  .task-files { padding: 0 16px 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .file-chip {
+    font-size: 0.7rem; font-family: monospace; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted);
+  }
+  .file-chip.new { border-color: var(--green); color: var(--green); background: #051a10; }
+  .file-chip.mod { border-color: var(--blue); color: var(--blue); background: #0a1a2e; }
+  .file-chip.test { border-color: var(--amber); color: var(--amber); background: #1c1507; }
+
+  details.steps {
+    border-top: 1px solid var(--border);
+  }
+  details.steps summary {
+    padding: 10px 16px; cursor: pointer; font-size: 0.78rem; color: var(--muted); list-style: none;
+  }
+  details.steps summary::before { content: '▶  '; color: var(--dim); font-size: 0.65rem; }
+  details.steps[open] summary::before { content: '▼  '; }
+  .step-list { padding: 12px 16px 16px; }
+  .step { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start; }
+  .step-cb { width: 16px; height: 16px; border: 1.5px solid var(--border); border-radius: 3px; flex-shrink: 0; margin-top: 2px; }
+  .step-content { flex: 1; }
+  .step-label { font-size: 0.8rem; color: var(--text); font-weight: 600; margin-bottom: 2px; }
+  .step-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
+  .step-cmd { font-family: monospace; font-size: 0.72rem; color: var(--blue); background: var(--surface2); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+
+  /* AC table */
+  table.ac { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin: 16px 0; }
+  table.ac th { background: var(--surface); color: var(--muted); padding: 7px 10px; border: 1px solid var(--border); text-align: left; font-size: 0.7rem; text-transform: uppercase; }
+  table.ac td { padding: 7px 10px; border: 1px solid var(--border); color: var(--muted); }
+  table.ac tr:nth-child(even) td { background: var(--surface2); }
+  .ac-id { font-family: monospace; color: var(--purple); }
+  .ac-ok { color: var(--green); }
+  .ac-defer { color: var(--amber); font-size: 0.68rem; }
+  code { font-family: monospace; color: var(--blue); font-size: 0.8rem; background: #0d1627; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <h3>Plan</h3>
+  <a href="#overview">Overview</a>
+  <a href="#deps">Dependencies</a>
+  <div class="sep"></div>
+  <h3>Tasks</h3>
+  <a href="#task1">Task 1 — db.js</a>
+  <a href="#task2">Task 2 — oauth.js</a>
+  <a href="#task3">Task 3 — server.js</a>
+  <a href="#task4">Task 4 — Verify</a>
+  <div class="sep"></div>
+  <a href="#ac">Acceptance Criteria</a>
+</nav>
+
+<main>
+  <h1>OAuth Installation — Plan</h1>
+  <p class="meta">Issue #46 &nbsp;·&nbsp; Branch: v2 &nbsp;·&nbsp; Sprint 3 (May 18–31)</p>
+
+  <!-- Phase overview -->
+  <div class="phases" id="overview">
+    <div class="phase-card pending">
+      <div class="phase-num">Task 1</div>
+      <div class="phase-name">db.js</div>
+      <div class="phase-files">upsertWorkspaceFromOAuth<br>listActiveWorkspaces</div>
+    </div>
+    <div class="phase-card pending">
+      <div class="phase-num">Task 2</div>
+      <div class="phase-name">oauth.js</div>
+      <div class="phase-files">validateSlackEnvVars<br>handleOAuthRequest</div>
+    </div>
+    <div class="phase-card pending">
+      <div class="phase-num">Task 3</div>
+      <div class="phase-name">server.js</div>
+      <div class="phase-files">startup validation<br>async handler</div>
+    </div>
+    <div class="phase-card pending">
+      <div class="phase-num">Task 4</div>
+      <div class="phase-name">Verify</div>
+      <div class="phase-files">full test suite<br>AC checklist</div>
+    </div>
+  </div>
+
+  <!-- Dependency diagram -->
+  <div class="dep-wrap" id="deps">
+    <h3>Task dependency &amp; data flow</h3>
+    <svg viewBox="0 0 780 160" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:780px;display:block;">
+      <defs>
+        <marker id="arr" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <polygon points="0 0,7 2.5,0 5" fill="#475569"/>
+        </marker>
+        <marker id="arr-enc" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <polygon points="0 0,7 2.5,0 5" fill="#7c3aed"/>
+        </marker>
+      </defs>
+
+      <!-- db.js box -->
+      <rect x="10" y="50" width="140" height="60" rx="6" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+      <text x="80" y="74" font-size="11" font-weight="600" fill="#e2e8f0" text-anchor="middle" font-family="system-ui">db.js</text>
+      <text x="80" y="90" font-size="9" fill="#7dd3fc" text-anchor="middle" font-family="monospace">upsertWorkspaceFromOAuth</text>
+      <text x="80" y="102" font-size="9" fill="#7dd3fc" text-anchor="middle" font-family="monospace">listActiveWorkspaces</text>
+
+      <!-- arrow db→oauth -->
+      <line x1="150" y1="80" x2="218" y2="80" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="184" y="73" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">requires</text>
+
+      <!-- oauth.js box -->
+      <rect x="220" y="26" width="180" height="108" rx="6" fill="#1e293b" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="310" y="50" font-size="11" font-weight="600" fill="#e2e8f0" text-anchor="middle" font-family="system-ui">oauth.js  NEW</text>
+      <text x="310" y="66" font-size="9" fill="#7dd3fc" text-anchor="middle" font-family="monospace">validateSlackEnvVars()</text>
+      <text x="310" y="80" font-size="9" fill="#7dd3fc" text-anchor="middle" font-family="monospace">handleOAuthRequest(db,req,res)</text>
+      <text x="310" y="94" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">CSRF state Map</text>
+      <text x="310" y="108" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">oauth.v2.access via WebClient</text>
+      <text x="310" y="122" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">inline HTML pages</text>
+
+      <!-- arrow oauth→server -->
+      <line x1="400" y1="80" x2="468" y2="80" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="434" y="73" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">imported by</text>
+
+      <!-- server.js box -->
+      <rect x="470" y="36" width="160" height="88" rx="6" fill="#1e293b" stroke="#334155"/>
+      <text x="550" y="60" font-size="11" font-weight="600" fill="#e2e8f0" text-anchor="middle" font-family="system-ui">server.js</text>
+      <text x="550" y="76" font-size="9" fill="#7dd3fc" text-anchor="middle" font-family="monospace">validateSlackEnvVars()</text>
+      <text x="550" y="90" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">in start() after</text>
+      <text x="550" y="102" font-size="9" fill="#64748b" text-anchor="middle" font-family="monospace">validateEncryptionKey()</text>
+      <text x="550" y="116" font-size="9" fill="#7dd3fc" text-anchor="middle" font-family="monospace">async HTTP handler</text>
+
+      <!-- Slack API box -->
+      <rect x="680" y="50" width="90" height="60" rx="6" fill="#0a2a1a" stroke="#10b981" stroke-width="1"/>
+      <text x="725" y="78" font-size="11" font-weight="600" fill="#6ee7b7" text-anchor="middle" font-family="system-ui">Slack</text>
+      <text x="725" y="92" font-size="9" fill="#64748b" text-anchor="middle">oauth.v2.access</text>
+
+      <!-- arrow server→Slack (runtime, not code) -->
+      <line x1="630" y1="80" x2="678" y2="80" stroke="#475569" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+      <text x="654" y="73" font-size="9" fill="#64748b" text-anchor="middle">runtime</text>
+    </svg>
+  </div>
+
+  <!-- TASK 1 -->
+  <h2 id="task1">Task 1 — db.js additions</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-num">Task 1</span>
+      <span class="task-title">upsertWorkspaceFromOAuth + listActiveWorkspaces</span>
+      <span class="badge badge-todo">Todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip mod">src/db.js</span>
+      <span class="file-chip test">test/db.test.js</span>
+    </div>
+    <details class="steps">
+      <summary>7 steps</summary>
+      <div class="step-list">
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.1 — Add 5 failing tests to test/db.test.js</div>
+            <div class="step-desc">Append tests for <code>upsertWorkspaceFromOAuth</code> (encrypts token, getWorkspace decrypts, re-install updates) and <code>listActiveWorkspaces</code> (filters inactive, decrypts). Import both from <code>../src/db.js</code>.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.2 — Confirm failures</div>
+            <div class="step-desc">Expected: <em>upsertWorkspaceFromOAuth is not a function</em></div>
+            <span class="step-cmd">NODE_ENV=test node --test test/db.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.3 — Implement upsertWorkspaceFromOAuth in src/db.js</div>
+            <div class="step-desc">INSERT with ON CONFLICT UPDATE covering <code>team_name</code>, <code>bot_token</code> (encrypted), <code>installed_by</code>, <code>installed_at</code>, <code>active=1</code>. Insert after <code>getCaldavCredentials</code>.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.4 — Implement listActiveWorkspaces in src/db.js</div>
+            <div class="step-desc">SELECT * WHERE active=1; decrypt <code>bot_token</code> in each row.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.5 — Update module.exports</div>
+            <div class="step-desc">Add <code>upsertWorkspaceFromOAuth</code> and <code>listActiveWorkspaces</code> to the exports object.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.6 — Confirm all tests pass</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/db.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">1.7 — Commit</div>
+            <span class="step-cmd">git add src/db.js test/db.test.js &amp;&amp; git commit -m "feat: add upsertWorkspaceFromOAuth and listActiveWorkspaces to db.js\n\nrefs: #46"</span>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- TASK 2 -->
+  <h2 id="task2">Task 2 — src/oauth.js</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-num">Task 2</span>
+      <span class="task-title">validateSlackEnvVars + handleOAuthRequest</span>
+      <span class="badge badge-todo">Todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip new">src/oauth.js  NEW</span>
+      <span class="file-chip test new">test/oauth.test.js  NEW</span>
+    </div>
+    <details class="steps">
+      <summary>9 steps</summary>
+      <div class="step-list">
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.1 — Create test/oauth.test.js with validateSlackEnvVars tests</div>
+            <div class="step-desc">4 tests: throws on missing CLIENT_ID, CLIENT_SECRET, REDIRECT_HOST; no throw when all set. Set env vars + ENCRYPTION_KEY at top of file before require.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.2 — Confirm failures</div>
+            <div class="step-desc">Expected: <em>Cannot find module '../src/oauth.js'</em></div>
+            <span class="step-cmd">NODE_ENV=test node --test test/oauth.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.3 — Create src/oauth.js (full implementation)</div>
+            <div class="step-desc">Module-scope <code>PENDING_STATES</code> Map + TTL constant. Exports: <code>validateSlackEnvVars</code>, <code>handleOAuthRequest</code>, <code>_setClientForTest</code>, <code>_addStateForTest</code>. Handles GET /slack/install, /slack/oauth/callback, /slack/install/success. Inline HTML error + success pages. TODO #48 comment in callback.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.4 — Confirm validateSlackEnvVars tests pass</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/oauth.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.5 — Append 10 route tests to test/oauth.test.js</div>
+            <div class="step-desc">Returns false for unrecognised path + non-GET. /slack/install → 302 with state param. /slack/oauth/callback: 400 on missing/unknown/expired state, 400 on user denial, 400 on Slack error, 302 to success on happy path (stubs WebClient). /slack/install/success → 200.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.6 — Confirm new tests fail (or skip if already implemented)</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/oauth.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.7 — Confirm all 14 oauth tests pass</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/oauth.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.8 — Run full suite (no regressions)</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">2.9 — Commit</div>
+            <span class="step-cmd">git add src/oauth.js test/oauth.test.js &amp;&amp; git commit -m "feat: add src/oauth.js\n\nrefs: #46"</span>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- TASK 3 -->
+  <h2 id="task3">Task 3 — server.js integration</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-num">Task 3</span>
+      <span class="task-title">Wire startup validation + async HTTP handler</span>
+      <span class="badge badge-todo">Todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip mod">src/server.js</span>
+    </div>
+    <details class="steps">
+      <summary>6 steps</summary>
+      <div class="step-list">
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">3.1 — Add import to server.js</div>
+            <div class="step-desc">After line 7 (<code>require('./crypto.js')</code>), add: <code>const { validateSlackEnvVars, handleOAuthRequest } = require('./oauth.js');</code></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">3.2 — Add validateSlackEnvVars() call in start()</div>
+            <div class="step-desc">After <code>validateEncryptionKey();</code> on line 42, add <code>validateSlackEnvVars();</code></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">3.3 — Update HTTP handler to async + delegate</div>
+            <div class="step-desc">Change <code>http.createServer((req, res) =&gt;</code> to <code>http.createServer(async (req, res) =&gt;</code>. Add <code>else if (await handleOAuthRequest(db, req, res)) { }</code> before the 404 fallback.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">3.4 — Confirm server.test.js passes</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/server.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">3.5 — Run full test suite</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">3.6 — Commit</div>
+            <span class="step-cmd">git add src/server.js &amp;&amp; git commit -m "feat: wire OAuth routes into server.js\n\nrefs: #46"</span>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- TASK 4 -->
+  <h2 id="task4">Task 4 — Final verification</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-num">Task 4</span>
+      <span class="task-title">Confirm all tests green + AC checklist</span>
+      <span class="badge badge-todo">Todo</span>
+    </div>
+    <details class="steps">
+      <summary>2 steps</summary>
+      <div class="step-list">
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">4.1 — Full test suite with tail</div>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js 2&gt;&amp;1 | tail -5</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-cb"></div>
+          <div class="step-content">
+            <div class="step-label">4.2 — Confirm new files exist</div>
+            <span class="step-cmd">ls src/oauth.js test/oauth.test.js</span>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- AC -->
+  <h2 id="ac">Acceptance Criteria</h2>
+  <table class="ac">
+    <thead><tr><th>ID</th><th>Criterion</th><th>Task</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="ac-id">AC-01</td>
+        <td><code>GET /slack/install</code> redirects to Slack authorize URL with scopes + <code>state</code> param</td>
+        <td class="ac-ok">Task 2</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-02</td>
+        <td><code>GET /slack/oauth/callback</code> exchanges code, stores workspace with encrypted <code>bot_token</code></td>
+        <td class="ac-ok">Task 1 + 2</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-03</td>
+        <td>Duplicate installs update the token without error</td>
+        <td class="ac-ok">Task 1 (re-install test)</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-04</td>
+        <td>Invalid/expired code returns 400 without leaking raw error</td>
+        <td class="ac-ok">Task 2</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-05</td>
+        <td>Bot DMs installing admin after install</td>
+        <td class="ac-defer">Deferred — issue #48</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-06</td>
+        <td><code>SLACK_CLIENT_ID</code>, <code>SLACK_CLIENT_SECRET</code>, <code>SLACK_REDIRECT_HOST</code> missing fails fast</td>
+        <td class="ac-ok">Task 2 + 3</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-07</td>
+        <td>CSRF state mismatch / replay / expiry returns 400</td>
+        <td class="ac-ok">Task 2</td>
+      </tr>
+    </tbody>
+  </table>
+
+</main>
+</body>
+</html>
