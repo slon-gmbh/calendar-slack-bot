@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scheduler Registry — Component Diagram</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; margin: 0; padding: 24px; }
+  h2 { color: #a78bfa; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 20px; }
+  svg { width: 100%; max-width: 860px; display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<h2>Scheduler Registry — Component Relationships</h2>
+<svg viewBox="0 0 860 480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-blue" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#7dd3fc"/>
+    </marker>
+    <marker id="arr-green" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#34d399"/>
+    </marker>
+    <marker id="arr-purple" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#a78bfa"/>
+    </marker>
+    <marker id="arr-red" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#f87171"/>
+    </marker>
+  </defs>
+
+  <!-- server.js -->
+  <rect x="20" y="30" width="160" height="80" rx="8" fill="#1e293b" stroke="#7dd3fc" stroke-width="1.5"/>
+  <text x="100" y="58" fill="#7dd3fc" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">server.js</text>
+  <text x="100" y="76" fill="#64748b" font-size="10" text-anchor="middle">start() — orchestrator</text>
+  <text x="100" y="92" fill="#64748b" font-size="10" text-anchor="middle">passes onInstall callback</text>
+
+  <!-- oauth.js -->
+  <rect x="20" y="180" width="160" height="70" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+  <text x="100" y="208" fill="#6ee7b7" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">oauth.js</text>
+  <text x="100" y="226" fill="#64748b" font-size="10" text-anchor="middle">handleOAuthRequest(</text>
+  <text x="100" y="240" fill="#64748b" font-size="10" text-anchor="middle">db, req, res, onInstall)</text>
+
+  <!-- events.js -->
+  <rect x="20" y="320" width="160" height="70" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="100" y="348" fill="#fcd34d" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">events.js</text>
+  <text x="100" y="366" fill="#64748b" font-size="10" text-anchor="middle">handleEventsRequest(</text>
+  <text x="100" y="380" fill="#64748b" font-size="10" text-anchor="middle">db, req, res, onUninstall)</text>
+
+  <!-- scheduler-registry.js — center -->
+  <rect x="260" y="160" width="200" height="120" rx="8" fill="#1a1040" stroke="#a78bfa" stroke-width="2"/>
+  <text x="360" y="188" fill="#a78bfa" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">scheduler-registry.js</text>
+  <text x="360" y="208" fill="#94a3b8" font-size="10" text-anchor="middle">scheduleAllWorkspaces(db, dryRun)</text>
+  <text x="360" y="224" fill="#94a3b8" font-size="10" text-anchor="middle">scheduleWorkspace(db, wsId, dryRun)</text>
+  <text x="360" y="240" fill="#94a3b8" font-size="10" text-anchor="middle">unscheduleWorkspace(wsId)</text>
+  <text x="360" y="258" fill="#64748b" font-size="9" text-anchor="middle" font-style="italic">Map&lt;workspaceId, CronTask[]&gt;</text>
+  <text x="360" y="272" fill="#64748b" font-size="9" text-anchor="middle" font-style="italic">(module-scope)</text>
+
+  <!-- runner.js -->
+  <rect x="560" y="60" width="160" height="80" rx="8" fill="#1e293b" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="640" y="88" fill="#818cf8" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">runner.js</text>
+  <text x="640" y="108" fill="#64748b" font-size="10" text-anchor="middle">runScheduledDigests(db, wsId)</text>
+  <text x="640" y="122" fill="#64748b" font-size="10" text-anchor="middle">runChangeDetection(db, wsId)</text>
+
+  <!-- db.js -->
+  <rect x="560" y="220" width="160" height="70" rx="8" fill="#1e293b" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="640" y="248" fill="#c4b5fd" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">db.js</text>
+  <text x="640" y="266" fill="#64748b" font-size="10" text-anchor="middle">listActiveWorkspaces(db)</text>
+  <text x="640" y="280" fill="#64748b" font-size="10" text-anchor="middle">markWorkspaceInactive(db, wsId)</text>
+
+  <!-- node-cron -->
+  <rect x="560" y="360" width="160" height="60" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="640" y="388" fill="#94a3b8" font-size="13" font-weight="700" text-anchor="middle" font-family="'Courier New', monospace">node-cron</text>
+  <text x="640" y="406" fill="#64748b" font-size="10" text-anchor="middle">cron.schedule() / .stop()</text>
+
+  <!-- server.js → registry: scheduleAllWorkspaces on startup -->
+  <line x1="180" y1="60" x2="258" y2="200" stroke="#7dd3fc" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+  <text x="195" y="135" fill="#7dd3fc" font-size="9" font-family="'Courier New', monospace">scheduleAllWorkspaces()</text>
+  <text x="195" y="147" fill="#64748b" font-size="9">on startup</text>
+
+  <!-- oauth.js → server.js: onInstall callback -->
+  <line x1="100" y1="180" x2="100" y2="112" stroke="#10b981" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-green)"/>
+  <text x="108" y="150" fill="#6ee7b7" font-size="9" font-family="'Courier New', monospace">onInstall(wsId)</text>
+  <text x="108" y="162" fill="#64748b" font-size="9">callback fires</text>
+
+  <!-- server.js → registry: scheduleWorkspace via onInstall -->
+  <line x1="180" y1="90" x2="258" y2="210" stroke="#7dd3fc" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
+
+  <!-- events.js → server.js: onUninstall callback -->
+  <line x1="100" y1="320" x2="100" y2="252" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-red)"/>
+  <text x="108" y="292" fill="#fcd34d" font-size="9" font-family="'Courier New', monospace">onUninstall(wsId)</text>
+
+  <!-- server.js → registry: unscheduleWorkspace via onUninstall -->
+  <line x1="180" y1="100" x2="258" y2="240" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-red)"/>
+
+  <!-- registry → runner -->
+  <line x1="460" y1="195" x2="558" y2="120" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <text x="476" y="157" fill="#a78bfa" font-size="9" font-family="'Courier New', monospace">runScheduledDigests()</text>
+  <text x="476" y="169" fill="#64748b" font-size="9">called by each cron job</text>
+
+  <!-- registry → db -->
+  <line x1="460" y1="240" x2="558" y2="248" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <text x="470" y="238" fill="#a78bfa" font-size="9" font-family="'Courier New', monospace">listActiveWorkspaces()</text>
+
+  <!-- registry → node-cron -->
+  <line x1="460" y1="260" x2="558" y2="370" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+  <text x="465" y="330" fill="#a78bfa" font-size="9" font-family="'Courier New', monospace">cron.schedule()</text>
+  <text x="465" y="342" fill="#64748b" font-size="9">per workspace channel</text>
+
+  <!-- events.js → db: markInactive -->
+  <line x1="180" y1="355" x2="558" y2="280" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-red)"/>
+  <text x="350" y="330" fill="#fcd34d" font-size="9" font-family="'Courier New', monospace">markWorkspaceInactive()</text>
+
+  <!-- Legend -->
+  <rect x="20" y="430" width="12" height="3" fill="#7dd3fc"/>
+  <text x="38" y="436" fill="#94a3b8" font-size="9">server.js calls</text>
+  <rect x="130" y="430" width="12" height="3" fill="#a78bfa"/>
+  <text x="148" y="436" fill="#94a3b8" font-size="9">registry calls</text>
+  <rect x="230" y="430" width="12" height="3" fill="#f59e0b"/>
+  <text x="248" y="436" fill="#94a3b8" font-size="9">uninstall path</text>
+  <rect x="330" y="430" width="12" height="3" fill="#10b981"/>
+  <text x="348" y="436" fill="#94a3b8" font-size="9">install callback</text>
+</svg>
+</body>
+</html>

@@ -1,0 +1,727 @@
+<!-- issue: 47 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Per-Workspace Cron Scheduling — Design Spec</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1e293b;
+    --surface2: #0d1627;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --faint: #64748b;
+    --purple: #a78bfa;
+    --blue: #7dd3fc;
+    --green: #34d399;
+    --yellow: #fcd34d;
+    --red: #f87171;
+    --indigo: #818cf8;
+    --code-bg: #0d1627;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+  }
+
+  /* Sticky TOC */
+  nav#toc {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: 220px;
+    flex-shrink: 0;
+    background: #090d14;
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+
+  nav#toc .toc-title {
+    color: var(--purple);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+
+  nav#toc a {
+    display: block;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    transition: color 0.15s, background 0.15s;
+  }
+  nav#toc a:hover { color: var(--text); background: var(--surface); }
+  nav#toc a.l2 { padding-left: 20px; font-size: 11px; color: var(--faint); }
+  nav#toc a.l2:hover { color: var(--muted); }
+
+  /* Main content */
+  main {
+    flex: 1;
+    padding: 40px 48px;
+    max-width: 900px;
+    overflow-x: hidden;
+  }
+
+  h1 { font-size: 1.6rem; color: var(--text); margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; color: var(--purple); margin-top: 40px; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 0.95rem; color: var(--blue); margin-top: 24px; margin-bottom: 10px; }
+  h4 { font-size: 0.85rem; color: var(--muted); margin-top: 16px; margin-bottom: 8px; }
+
+  p { margin-bottom: 12px; color: var(--muted); }
+  p strong { color: var(--text); }
+
+  /* Header meta */
+  .meta { display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
+  .meta-item { font-size: 11px; color: var(--faint); }
+  .meta-item span { color: var(--muted); }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge-new { background: #065f46; color: #6ee7b7; }
+  .badge-mod { background: #1e3a5f; color: #93c5fd; }
+  .badge-p0  { background: #7f1d1d; color: #fca5a5; }
+  .badge-locked { background: #312e81; color: #c4b5fd; }
+  .badge-deferred { background: #1c1917; color: #a8a29e; }
+
+  /* Locked decisions table */
+  table.decisions {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+    font-size: 12px;
+  }
+  table.decisions th {
+    background: var(--surface2);
+    color: var(--purple);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  table.decisions td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #1e293b;
+    color: var(--muted);
+    vertical-align: top;
+  }
+  table.decisions tr:last-child td { border-bottom: none; }
+  table.decisions code { font-family: 'Courier New', monospace; color: var(--blue); font-size: 11px; }
+
+  /* Callout boxes */
+  aside.callout {
+    border-left: 3px solid var(--purple);
+    background: #1a1040;
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 12px;
+  }
+  aside.callout.green { border-color: var(--green); background: #052e1c; }
+  aside.callout.yellow { border-color: var(--yellow); background: #1c1400; }
+  aside.callout.red { border-color: var(--red); background: #2d0e0e; }
+  aside.callout .callout-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  aside.callout.green .callout-label { color: var(--green); }
+  aside.callout.yellow .callout-label { color: var(--yellow); }
+  aside.callout.red .callout-label { color: var(--red); }
+  aside.callout p { color: var(--muted); margin-bottom: 4px; }
+  aside.callout p:last-child { margin-bottom: 0; }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0 16px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  pre code { font-family: 'Courier New', monospace; color: #cbd5e1; }
+  .kw { color: #818cf8; }
+  .fn { color: #7dd3fc; }
+  .str { color: #34d399; }
+  .cmt { color: #475569; font-style: italic; }
+  .num { color: #fcd34d; }
+
+  /* Module table */
+  table.modules {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 12px;
+  }
+  table.modules th {
+    background: var(--surface2);
+    color: var(--faint);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 7px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  table.modules td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #1a2235;
+    color: var(--muted);
+    vertical-align: top;
+  }
+  table.modules tr:last-child td { border-bottom: none; }
+  table.modules code { font-family: 'Courier New', monospace; color: var(--blue); font-size: 11px; }
+
+  /* API signature boxes */
+  .api-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    margin: 12px 0;
+    font-size: 12px;
+  }
+  .api-sig {
+    font-family: 'Courier New', monospace;
+    color: var(--blue);
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .api-desc { color: var(--muted); }
+  .api-desc li { margin-left: 20px; margin-bottom: 3px; }
+
+  /* iframes */
+  .diagram-frame {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 16px 0;
+    background: var(--bg);
+  }
+
+  /* Details / collapsibles */
+  details {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 12px;
+  }
+  details summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--muted);
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+  }
+  details summary::before { content: '▶  '; font-size: 9px; color: var(--faint); }
+  details[open] summary::before { content: '▼  '; }
+  details .details-body { padding: 12px 16px; border-top: 1px solid var(--border); }
+
+  /* AC checklist */
+  ul.ac { list-style: none; margin: 12px 0; }
+  ul.ac li {
+    padding: 6px 10px;
+    border-bottom: 1px solid #1a2235;
+    color: var(--muted);
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  ul.ac li:last-child { border-bottom: none; }
+  ul.ac li::before { content: '☐'; color: var(--faint); flex-shrink: 0; margin-top: 1px; }
+
+  /* Test list */
+  ul.tests { list-style: none; margin: 8px 0; }
+  ul.tests li {
+    padding: 4px 8px;
+    color: var(--muted);
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    border-left: 2px solid var(--border);
+    margin-bottom: 3px;
+  }
+
+  /* Env var table */
+  table.envvars {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 12px 0;
+  }
+  table.envvars th {
+    background: var(--surface2);
+    color: var(--faint);
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  table.envvars td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #1a2235;
+    color: var(--muted);
+    vertical-align: top;
+  }
+  table.envvars td:first-child { font-family: 'Courier New', monospace; color: var(--blue); }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<nav id="toc">
+  <div class="toc-title">Contents</div>
+  <a href="#overview">Overview</a>
+  <a href="#locked">Locked Decisions</a>
+  <a href="#modules">Affected Modules</a>
+  <a href="#architecture">Architecture</a>
+  <a class="l2" href="#registry-component">Component diagram</a>
+  <a class="l2" href="#lifecycle-diagram">Lifecycle diagram</a>
+  <a href="#scheduler-registry">scheduler-registry.js</a>
+  <a href="#events">events.js</a>
+  <a href="#server">server.js changes</a>
+  <a href="#runner">runner.js changes</a>
+  <a href="#oauth">oauth.js changes</a>
+  <a href="#db">db.js changes</a>
+  <a href="#envvars">Env Vars</a>
+  <a href="#testing">Testing</a>
+  <a href="#ac">Acceptance Criteria</a>
+  <a href="#outofscope">Out of Scope</a>
+</nav>
+
+<main>
+
+  <h1>Per-Workspace Cron Scheduling</h1>
+  <div class="meta">
+    <div class="meta-item">Issue <span>#47</span></div>
+    <div class="meta-item">Branch <span>v2</span></div>
+    <div class="meta-item">Date <span>2026-05-21</span></div>
+    <div class="meta-item">Priority <span class="badge badge-p0">P0</span></div>
+    <div class="meta-item">Size <span>M</span></div>
+  </div>
+
+  <p><strong>Goal:</strong> Replace the single-tenant cron setup in <code>server.js</code> (one hardcoded <code>WORKSPACE_ID</code>) with a multi-tenant scheduler that loads all active workspaces from SQLite at startup and dynamically adds or removes jobs when workspaces install or uninstall via Slack OAuth.</p>
+
+  <!-- LOCKED DECISIONS -->
+  <h2 id="locked">Locked Decisions</h2>
+  <table class="decisions">
+    <thead>
+      <tr><th>Decision</th><th>Choice</th><th>Rationale</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Job registry location</td>
+        <td><code>src/scheduler-registry.js</code> <span class="badge badge-new">new</span></td>
+        <td>Isolated module, independently testable. Follows pattern of <code>crypto.js</code>, <code>oauth.js</code>.</td>
+      </tr>
+      <tr>
+        <td>Dynamic install hook</td>
+        <td>Callback passed to <code>handleOAuthRequest</code></td>
+        <td><code>oauth.js</code> stays ignorant of scheduling. Clean inversion of control.</td>
+      </tr>
+      <tr>
+        <td>Uninstall detection</td>
+        <td>Slack Events API <code>app_uninstalled</code> in <code>src/events.js</code> <span class="badge badge-new">new</span></td>
+        <td>Real-time, no polling. Needs <code>SLACK_SIGNING_SECRET</code>.</td>
+      </tr>
+      <tr>
+        <td>runner.js signature</td>
+        <td><code>(db, workspaceId, dryRun)</code></td>
+        <td>Loads fresh config per invocation. Simpler callers, config never stale.</td>
+      </tr>
+      <tr>
+        <td>Change-detection schedule</td>
+        <td>All workspaces share <code>'0 6-18/2 * * *'</code></td>
+        <td>Per-workspace change-detection schedules are out of scope (YAGNI).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- AFFECTED MODULES -->
+  <h2 id="modules">Affected Modules</h2>
+  <table class="modules">
+    <thead>
+      <tr><th>Module</th><th>Status</th><th>Role</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>src/scheduler-registry.js</code></td><td><span class="badge badge-new">new</span></td><td>Owns <code>Map&lt;workspaceId, CronTask[]&gt;</code>; manages job lifecycle</td></tr>
+      <tr><td><code>src/events.js</code></td><td><span class="badge badge-new">new</span></td><td>POST <code>/slack/events</code> handler; verifies signing secret; handles <code>app_uninstalled</code></td></tr>
+      <tr><td><code>src/server.js</code></td><td><span class="badge badge-mod">modified</span></td><td>Orchestrator; removes WORKSPACE_ID; wires callbacks; calls registry on startup/shutdown</td></tr>
+      <tr><td><code>src/runner.js</code></td><td><span class="badge badge-mod">modified</span></td><td>Signature change: <code>(db, workspaceId, dryRun)</code> for both exported functions</td></tr>
+      <tr><td><code>src/oauth.js</code></td><td><span class="badge badge-mod">modified</span></td><td>Accepts optional <code>onInstall</code> callback; fires after successful upsert</td></tr>
+      <tr><td><code>src/db.js</code></td><td><span class="badge badge-mod">modified</span></td><td>New: <code>markWorkspaceInactive(db, teamId)</code></td></tr>
+      <tr><td><code>test/scheduler-registry.test.js</code></td><td><span class="badge badge-new">new</span></td><td>Unit tests for registry (stub node-cron)</td></tr>
+      <tr><td><code>test/events.test.js</code></td><td><span class="badge badge-new">new</span></td><td>Unit tests for events handler (mock req/res)</td></tr>
+      <tr><td><code>test/runner.test.js</code></td><td><span class="badge badge-mod">modified</span></td><td>Update callers to new signature</td></tr>
+      <tr><td><code>test/db.test.js</code></td><td><span class="badge badge-mod">modified</span></td><td>Add tests for <code>markWorkspaceInactive</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ARCHITECTURE -->
+  <h2 id="architecture">Architecture</h2>
+
+  <p>The current <code>server.js</code> reads <code>WORKSPACE_ID</code> from env, calls <code>loadConfigFromDb</code> once, builds a flat <code>jobs</code> array, and passes <code>config</code> directly to every cron handler. This is entirely replaced.</p>
+
+  <p>The replacement distributes responsibility across four collaborating modules:</p>
+
+  <aside class="callout">
+    <div class="callout-label">Load-bearing boundary</div>
+    <p><strong><code>oauth.js</code> and <code>events.js</code> know nothing about scheduling.</strong> They fire callbacks (<code>onInstall</code>, <code>onUninstall</code>) provided by <code>server.js</code>. This means the scheduling logic is fully testable without touching the HTTP layer.</p>
+  </aside>
+
+  <h3 id="registry-component">Component Diagram</h3>
+  <iframe
+    src="assets/per-workspace-cron/diagram-scheduler-registry.html"
+    class="diagram-frame"
+    height="520"
+    frameborder="0"
+    title="Scheduler Registry — Component Relationships"
+  ></iframe>
+
+  <h3 id="lifecycle-diagram">Lifecycle Diagram</h3>
+  <iframe
+    src="assets/per-workspace-cron/diagram-lifecycle.html"
+    class="diagram-frame"
+    height="660"
+    frameborder="0"
+    title="Per-Workspace Cron — Lifecycle Sequence"
+  ></iframe>
+
+  <!-- SCHEDULER-REGISTRY.JS -->
+  <h2 id="scheduler-registry">scheduler-registry.js <span class="badge badge-new">new</span></h2>
+
+  <p>Single responsibility: own the <code>Map&lt;workspaceId, CronTask[]&gt;</code> and manage its lifecycle. No HTTP handling, no DB writes, no Slack API calls.</p>
+
+  <div class="api-box">
+    <div class="api-sig">scheduleWorkspace(db, workspaceId, dryRun): void</div>
+    <ul class="api-desc">
+      <li>If <code>workspaceId</code> already in <code>JOBS</code>: calls <code>unscheduleWorkspace(workspaceId)</code> first (idempotent re-install)</li>
+      <li>Calls <code>loadConfigFromDb(db, workspaceId)</code> to get channels + schedules</li>
+      <li>For each channel with <code>digest_schedule</code>: registers <code>cron.schedule(expr, handler)</code></li>
+      <li>For each channel with <code>daily_digest_schedule</code>: registers <code>cron.schedule(expr, handler)</code></li>
+      <li>Registers one change-detection job at <code>'0 6-18/2 * * *'</code></li>
+      <li>All tasks stored as <code>JOBS.set(workspaceId, [task1, task2, …])</code></li>
+    </ul>
+  </div>
+
+  <div class="api-box">
+    <div class="api-sig">scheduleAllWorkspaces(db, dryRun): void</div>
+    <ul class="api-desc">
+      <li>Calls <code>listActiveWorkspaces(db)</code> — decrypts bot tokens</li>
+      <li>Calls <code>scheduleWorkspace(db, ws.team_id, dryRun)</code> for each</li>
+    </ul>
+  </div>
+
+  <div class="api-box">
+    <div class="api-sig">unscheduleWorkspace(workspaceId): void</div>
+    <ul class="api-desc">
+      <li><code>JOBS.get(workspaceId)?.forEach(job =&gt; job.stop())</code></li>
+      <li><code>JOBS.delete(workspaceId)</code></li>
+      <li>No-op if workspace not in map</li>
+    </ul>
+  </div>
+
+  <div class="api-box">
+    <div class="api-sig">stopAll(): void</div>
+    <ul class="api-desc">
+      <li>Stops all jobs across all map entries</li>
+      <li><code>JOBS.clear()</code></li>
+      <li>Called by <code>server.js</code> shutdown handler</li>
+    </ul>
+  </div>
+
+  <aside class="callout">
+    <div class="callout-label">Error isolation</div>
+    <p>Each cron handler closure wraps the runner call in <code>try/catch</code>. A crash or rejection for workspace A never stops workspace B's jobs. Log prefix: <code>[cron][workspaceId]</code>.</p>
+  </aside>
+
+  <pre><code><span class="cmt">// cron handler pattern (inside scheduleWorkspace)</span>
+<span class="kw">const</span> handler = <span class="kw">async</span> () => {
+  <span class="fn">console</span>.log(<span class="str">`[cron][${workspaceId}] digest firing for ${channel.id}`</span>);
+  <span class="kw">try</span> {
+    <span class="kw">await</span> <span class="fn">runScheduledDigests</span>(db, workspaceId, dryRun);
+  } <span class="kw">catch</span> (err) {
+    <span class="fn">console</span>.error(<span class="str">`[cron][${workspaceId}] digest error:`</span>, err.message);
+  }
+};
+</code></pre>
+
+  <details>
+    <summary>Why module-scope Map and not a class?</summary>
+    <div class="details-body">
+      <p>A module-scope Map is the simplest singleton pattern in Node.js — the module cache guarantees a single instance. A class would require passing the registry instance through multiple layers or using a separate singleton export. The module itself <em>is</em> the singleton.</p>
+      <p>For testing, <code>stopAll()</code> followed by clearing the map provides clean isolation between test cases without needing dependency injection.</p>
+    </div>
+  </details>
+
+  <!-- EVENTS.JS -->
+  <h2 id="events">events.js <span class="badge badge-new">new</span></h2>
+
+  <p>Handles <code>POST /slack/events</code>. Verifies Slack's HMAC signing signature before processing any event. Currently handles one event type: <code>app_uninstalled</code>.</p>
+
+  <div class="api-box">
+    <div class="api-sig">validateSlackEventsEnvVars(): void</div>
+    <ul class="api-desc">
+      <li>Throws if <code>SLACK_SIGNING_SECRET</code> is missing or empty</li>
+      <li>Called in <code>server.js start()</code> alongside <code>validateEncryptionKey()</code> and <code>validateSlackEnvVars()</code></li>
+    </ul>
+  </div>
+
+  <div class="api-box">
+    <div class="api-sig">handleEventsRequest(db, req, res, onUninstall): Promise&lt;boolean&gt;</div>
+    <ul class="api-desc">
+      <li>Returns <code>false</code> immediately if <code>method !== 'POST'</code> or <code>pathname !== '/slack/events'</code></li>
+      <li>Reads raw body bytes (needed for HMAC over original bytes)</li>
+      <li>Checks <code>X-Slack-Request-Timestamp</code>: rejects if &gt;5 min old (replay protection)</li>
+      <li>Verifies <code>X-Slack-Signature</code>: HMAC-SHA256 of <code>v0:${timestamp}:${rawBody}</code> with <code>SLACK_SIGNING_SECRET</code> → 403 if mismatch</li>
+      <li>Parses JSON body</li>
+      <li><code>type === 'url_verification'</code>: responds <code>200 { challenge }</code></li>
+      <li><code>type === 'event_callback'</code> &amp;&amp; <code>event.type === 'app_uninstalled'</code>: calls <code>markWorkspaceInactive(db, event.team_id)</code>, calls <code>onUninstall(event.team_id)</code> if provided, responds 200</li>
+      <li>All other events: responds 200 (acknowledged, ignored)</li>
+      <li>Returns <code>true</code> for all <code>/slack/events</code> POSTs (route was handled)</li>
+    </ul>
+  </div>
+
+  <aside class="callout yellow">
+    <div class="callout-label">Security note</div>
+    <p>Timestamp check (<code>&gt;5min</code>) + HMAC verification together prevent replay attacks. The raw body must be read as bytes before parsing as JSON — any whitespace normalization would invalidate the signature.</p>
+  </aside>
+
+  <details>
+    <summary>Why not add events handling to oauth.js?</summary>
+    <div class="details-body">
+      <p><code>oauth.js</code> handles the OAuth 2.0 installation flow. Events is a distinct Slack API surface with different auth (signing secret vs client secret), different request shape, and it will grow as more event types are handled. Keeping them separate keeps both files focused and avoids conflating install-time auth with runtime event delivery.</p>
+    </div>
+  </details>
+
+  <!-- SERVER.JS CHANGES -->
+  <h2 id="server">server.js changes <span class="badge badge-mod">modified</span></h2>
+
+  <p><code>server.js</code> becomes a pure orchestrator: it imports modules and wires them together but owns no scheduling logic itself.</p>
+
+  <h3>Removed</h3>
+  <ul style="list-style: disc; padding-left: 24px; color: var(--muted); font-size: 13px; margin-bottom: 12px;">
+    <li><code>WORKSPACE_ID</code> env var check and usage</li>
+    <li><code>const config = loadConfigFromDb(db, workspaceId)</code> call at startup</li>
+    <li><code>loadConfigFromDb</code> import</li>
+    <li>Local <code>jobs</code> array and all <code>jobs.push(cron.schedule(...))</code> calls</li>
+  </ul>
+
+  <h3>Added</h3>
+
+  <pre><code><span class="kw">const</span> registry = <span class="fn">require</span>(<span class="str">'./scheduler-registry.js'</span>);
+<span class="kw">const</span> { <span class="fn">validateSlackEventsEnvVars</span>, <span class="fn">handleEventsRequest</span> } = <span class="fn">require</span>(<span class="str">'./events.js'</span>);
+
+<span class="kw">async function</span> <span class="fn">start</span>() {
+  <span class="fn">validateEncryptionKey</span>();
+  <span class="fn">validateSlackEnvVars</span>();
+  <span class="fn">validateSlackEventsEnvVars</span>();         <span class="cmt">// new</span>
+
+  <span class="kw">const</span> dataDir = process.env.DATA_DIR;
+  <span class="kw">if</span> (!dataDir) <span class="kw">throw new</span> <span class="fn">Error</span>(<span class="str">'DATA_DIR environment variable not set'</span>);
+  <span class="cmt">// WORKSPACE_ID check removed</span>
+
+  <span class="kw">const</span> db = <span class="fn">openDb</span>(path.join(dataDir, <span class="str">'bot.db'</span>));
+  <span class="kw">const</span> dryRun = process.env.DRY_RUN === <span class="str">'true'</span>;
+
+  <span class="kw">await</span> registry.<span class="fn">scheduleAllWorkspaces</span>(db, dryRun);  <span class="cmt">// replaces jobs loop</span>
+
+  <span class="kw">const</span> onInstall = <span class="kw">async</span> (workspaceId) => {
+    <span class="kw">await</span> registry.<span class="fn">scheduleWorkspace</span>(db, workspaceId, dryRun);
+  };
+  <span class="kw">const</span> onUninstall = (workspaceId) => {
+    registry.<span class="fn">unscheduleWorkspace</span>(workspaceId);
+  };
+
+  <span class="cmt">// HTTP handler adds handleEventsRequest:</span>
+  <span class="kw">const</span> httpServer = http.<span class="fn">createServer</span>(<span class="kw">async</span> (req, res) => {
+    <span class="kw">try</span> {
+      <span class="kw">if</span> (req.method === <span class="str">'GET'</span> && req.url === <span class="str">'/health'</span>) { <span class="cmt">/* … */</span> }
+      <span class="kw">else if</span> (<span class="kw">await</span> <span class="fn">handleOAuthRequest</span>(db, req, res, onInstall)) { <span class="cmt">/* handled */</span> }
+      <span class="kw">else if</span> (<span class="kw">await</span> <span class="fn">handleEventsRequest</span>(db, req, res, onUninstall)) { <span class="cmt">/* handled */</span> }
+      <span class="kw">else</span> { res.<span class="fn">writeHead</span>(<span class="num">404</span>); res.<span class="fn">end</span>(); }
+    } <span class="kw">catch</span> (err) { <span class="cmt">/* 500 handler unchanged */</span> }
+  });
+
+  <span class="kw">function</span> <span class="fn">shutdown</span>() {
+    registry.<span class="fn">stopAll</span>();     <span class="cmt">// replaces: for (const job of jobs) job.stop()</span>
+    httpServer.<span class="fn">close</span>(() => { db.<span class="fn">close</span>(); process.<span class="fn">exit</span>(<span class="num">0</span>); });
+  }
+}
+</code></pre>
+
+  <!-- RUNNER.JS CHANGES -->
+  <h2 id="runner">runner.js changes <span class="badge badge-mod">modified</span></h2>
+
+  <p>Both exported functions gain one line at the top and drop the <code>config</code> parameter:</p>
+
+  <pre><code><span class="cmt">// Before:</span>
+<span class="kw">async function</span> <span class="fn">runScheduledDigests</span>(config, db, dryRun) { … }
+
+<span class="cmt">// After:</span>
+<span class="kw">async function</span> <span class="fn">runScheduledDigests</span>(db, workspaceId, dryRun) {
+  <span class="kw">const</span> config = <span class="fn">loadConfigFromDb</span>(db, workspaceId);
+  <span class="cmt">// rest of function unchanged — config.channels, config.calendars, etc. all still work</span>
+}
+</code></pre>
+
+  <p>Same change applies to <code>runChangeDetection</code>. New import added: <code>const { loadConfigFromDb } = require('./config.js')</code>.</p>
+
+  <aside class="callout green">
+    <div class="callout-label">Why fresh config per invocation?</div>
+    <p>Config loaded once at startup would be stale if workspace settings change while the server is running. Loading per invocation costs one synchronous SQLite read — negligible for digest/change-detection frequency. It also simplifies the caller (no config object to carry around).</p>
+  </aside>
+
+  <!-- OAUTH.JS CHANGES -->
+  <h2 id="oauth">oauth.js changes <span class="badge badge-mod">modified</span></h2>
+
+  <p>The only change is accepting an optional <code>onInstall</code> callback and calling it after a successful install:</p>
+
+  <pre><code><span class="cmt">// Before:</span>
+<span class="kw">async function</span> <span class="fn">handleOAuthRequest</span>(db, req, res) { … }
+
+<span class="cmt">// After:</span>
+<span class="kw">async function</span> <span class="fn">handleOAuthRequest</span>(db, req, res, onInstall) {
+  <span class="cmt">// …on successful token exchange:</span>
+  <span class="fn">upsertWorkspaceFromOAuth</span>(db, { teamId, teamName, botToken, installedBy });
+  <span class="kw">if</span> (onInstall) <span class="kw">await</span> <span class="fn">onInstall</span>(teamId);  <span class="cmt">// replaces TODO #48 comment</span>
+  res.<span class="fn">writeHead</span>(<span class="num">302</span>, { Location: <span class="str">'/slack/install/success'</span> });
+  res.<span class="fn">end</span>();
+}
+</code></pre>
+
+  <p><code>onInstall</code> is optional — existing tests that call <code>handleOAuthRequest(db, req, res)</code> without the fourth argument continue to work.</p>
+
+  <!-- DB.JS CHANGES -->
+  <h2 id="db">db.js changes <span class="badge badge-mod">modified</span></h2>
+
+  <p>One new function added after <code>listActiveWorkspaces</code>:</p>
+
+  <pre><code><span class="kw">function</span> <span class="fn">markWorkspaceInactive</span>(db, teamId) {
+  db.<span class="fn">prepare</span>(<span class="str">'UPDATE workspaces SET active = 0 WHERE team_id = ?'</span>).<span class="fn">run</span>(teamId);
+}
+</code></pre>
+
+  <p>Added to <code>module.exports</code>.</p>
+
+  <!-- ENV VARS -->
+  <h2 id="envvars">Environment Variables</h2>
+
+  <table class="envvars">
+    <thead><tr><th>Variable</th><th>Required</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>SLACK_SIGNING_SECRET</td>
+        <td><span class="badge badge-p0">required</span></td>
+        <td>HMAC key for verifying Slack Events API request signatures. From Slack app settings → Basic Information → App Credentials.</td>
+      </tr>
+      <tr>
+        <td>WORKSPACE_ID</td>
+        <td><span class="badge badge-deferred">removed</span></td>
+        <td>No longer needed. Workspace context comes from SQLite.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TESTING -->
+  <h2 id="testing">Testing</h2>
+
+  <p>Test command: <code>NODE_ENV=test node --test test/*.test.js</code></p>
+  <p>All tests use <code>openDb(':memory:')</code>. No real Slack API calls. node-cron is stubbed via <code>_setCronForTest(mockCron)</code> (same pattern as <code>oauth.js</code> <code>_setClientForTest</code>).</p>
+
+  <h3>test/scheduler-registry.test.js (new)</h3>
+  <ul class="tests">
+    <li>scheduleWorkspace — registers digest + daily + change-detection jobs for one workspace</li>
+    <li>scheduleWorkspace — idempotent: calling twice stops old jobs before registering new ones</li>
+    <li>unscheduleWorkspace — stops all jobs; second call is a no-op</li>
+    <li>scheduleAllWorkspaces — schedules jobs for two active workspaces</li>
+    <li>stopAll — stops all jobs across all workspaces; JOBS is empty after</li>
+  </ul>
+
+  <h3>test/events.test.js (new)</h3>
+  <ul class="tests">
+    <li>validateSlackEventsEnvVars — throws when SLACK_SIGNING_SECRET missing</li>
+    <li>handleEventsRequest — returns false for non-POST</li>
+    <li>handleEventsRequest — returns false for wrong path</li>
+    <li>handleEventsRequest — returns 403 for invalid signature</li>
+    <li>handleEventsRequest — returns 403 for stale timestamp (&gt;5min)</li>
+    <li>handleEventsRequest — url_verification responds with challenge</li>
+    <li>handleEventsRequest — app_uninstalled calls markWorkspaceInactive + onUninstall</li>
+    <li>handleEventsRequest — unknown event type returns 200, no side effects</li>
+  </ul>
+
+  <h3>test/runner.test.js (updated)</h3>
+  <ul class="tests">
+    <li>All existing callers updated: (config, db, dryRun) → (db, workspaceId, dryRun)</li>
+    <li>Workspace + config seeded via seedWorkspace() before each test</li>
+  </ul>
+
+  <h3>test/db.test.js (updated)</h3>
+  <ul class="tests">
+    <li>markWorkspaceInactive — sets active = 0 for the given team_id</li>
+    <li>markWorkspaceInactive — no-op for unknown team_id (no error)</li>
+    <li>listActiveWorkspaces — excludes workspaces marked inactive</li>
+  </ul>
+
+  <!-- ACCEPTANCE CRITERIA -->
+  <h2 id="ac">Acceptance Criteria</h2>
+  <ul class="ac">
+    <li>On startup, cron jobs registered for all active workspaces from SQLite</li>
+    <li>New workspace install dynamically adds cron jobs (no process restart needed)</li>
+    <li>Workspace uninstall (via Slack <code>app_uninstalled</code> event) stops their cron jobs and marks workspace inactive in DB</li>
+    <li>Each workspace's jobs use their own bot token and config loaded from DB</li>
+    <li>Zero cross-workspace data leakage in any cron execution</li>
+  </ul>
+
+  <!-- OUT OF SCOPE -->
+  <h2 id="outofscope">Out of Scope</h2>
+
+  <table class="modules">
+    <thead><tr><th>Item</th><th>Issue</th></tr></thead>
+    <tbody>
+      <tr><td>Onboarding wizard DM to installing admin</td><td>#48</td></tr>
+      <tr><td>Slash commands handler</td><td>#26</td></tr>
+      <tr><td>Slack interactivity handler (general events)</td><td>#27</td></tr>
+      <tr><td>Per-workspace change-detection schedule (all share <code>'0 6-18/2 * * *'</code>)</td><td>future</td></tr>
+      <tr><td>Deploy to Fly.io</td><td>#42</td></tr>
+    </tbody>
+  </table>
+
+</main>
+
+</body>
+</html>
