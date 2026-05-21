@@ -64,11 +64,15 @@ function buildAuthorizeUrl(state) {
   return `https://slack.com/oauth/v2/authorize?${params.toString()}`;
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function sendError(res, message) {
   res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(
     `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Installation Failed</title></head>` +
-    `<body><h1>Installation failed</h1><p>${message}</p>` +
+    `<body><h1>Installation failed</h1><p>${escapeHtml(message)}</p>` +
     `<p><a href="/slack/install">Try again</a></p></body></html>`
   );
 }
