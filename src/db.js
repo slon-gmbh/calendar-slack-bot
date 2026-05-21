@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const { encrypt, decrypt } = require('./crypto.js');
 
 /**
  * Open (or create) a SQLite database, run schema migrations, and return the instance.
@@ -264,13 +265,15 @@ function savePending(db, workspaceId, channelId, diffs, createdAt = new Date()) 
 }
 
 /**
- * Get workspace row by team_id.
+ * Get workspace row by team_id, decrypting bot_token transparently.
  * @param {import('better-sqlite3').Database} db
  * @param {string} workspaceId
  * @returns {Object|null}
  */
 function getWorkspace(db, workspaceId) {
-  return db.prepare('SELECT * FROM workspaces WHERE team_id = ?').get(workspaceId) || null;
+  const row = db.prepare('SELECT * FROM workspaces WHERE team_id = ?').get(workspaceId) || null;
+  if (row?.bot_token) row.bot_token = decrypt(row.bot_token);
+  return row;
 }
 
 /**
@@ -289,7 +292,38 @@ function upsertWorkspace(db, { teamId, teamName, botToken = null, installedBy = 
       error_channel = excluded.error_channel,
       nextcloud_url = excluded.nextcloud_url,
       active        = excluded.active
-  `).run(teamId, teamName || teamId, botToken, installedBy, new Date().toISOString(), locale, timezone, errorChannel, nextcloudUrl);
+  `).run(teamId, teamName || teamId, botToken ? encrypt(botToken) : null, installedBy, new Date().toISOString(), locale, timezone, errorChannel, nextcloudUrl);
+}
+
+/**
+ * Insert or update CalDAV credentials. Encrypts password transparently.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
+ * @param {string} username
+ * @param {string} password - plaintext; stored encrypted
+ */
+function upsertCaldavCredentials(db, workspaceId, username, password) {
+  db.prepare(`
+    INSERT INTO caldav_credentials (workspace_id, username, password)
+    VALUES (?, ?, ?)
+    ON CONFLICT(workspace_id) DO UPDATE SET
+      username = excluded.username,
+      password = excluded.password
+  `).run(workspaceId, username, encrypt(password));
+}
+
+/**
+ * Get CalDAV credentials, decrypting password transparently.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
+ * @returns {{username: string, password: string}|null}
+ */
+function getCaldavCredentials(db, workspaceId) {
+  const row = db.prepare(
+    'SELECT username, password FROM caldav_credentials WHERE workspace_id = ?'
+  ).get(workspaceId);
+  if (!row) return null;
+  return { username: row.username, password: decrypt(row.password) };
 }
 
 module.exports = {
@@ -303,5 +337,7 @@ module.exports = {
   loadPending,
   savePending,
   getWorkspace,
-  upsertWorkspace
+  upsertWorkspace,
+  upsertCaldavCredentials,
+  getCaldavCredentials
 };

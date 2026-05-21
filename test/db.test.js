@@ -2,6 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { openDb, loadEvents, saveEvents, loadColor, saveColor, loadRunState, saveRunState, loadPending, savePending, getWorkspace, upsertWorkspace } = require('../src/db.js');
 
+process.env.ENCRYPTION_KEY = '0'.repeat(64);
+
 function memDb() {
   return openDb(':memory:');
 }
@@ -184,5 +186,61 @@ test('upsertWorkspace is idempotent — bot_token not overwritten on re-upsert',
   const row = getWorkspace(db, 'T_123');
   assert.strictEqual(row.team_name, 'Updated Name');
   assert.strictEqual(row.bot_token, 'xoxb-secret');  // preserved
+  db.close();
+});
+
+test('upsertWorkspace encrypts bot_token — raw stored value differs from plaintext', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_ENC', teamName: 'Enc Test', botToken: 'xoxb-plaintext-token' });
+  const raw = db.prepare('SELECT bot_token FROM workspaces WHERE team_id = ?').get('T_ENC');
+  assert.notStrictEqual(raw.bot_token, 'xoxb-plaintext-token');
+  assert.ok(raw.bot_token.includes(':'), 'stored value must be in iv:ct:tag format');
+  db.close();
+});
+
+test('getWorkspace decrypts bot_token — returns original plaintext', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_DEC', teamName: 'Dec Test', botToken: 'xoxb-plaintext-token' });
+  const row = getWorkspace(db, 'T_DEC');
+  assert.strictEqual(row.bot_token, 'xoxb-plaintext-token');
+  db.close();
+});
+
+const { upsertCaldavCredentials, getCaldavCredentials } = require('../src/db.js');
+
+test('upsertCaldavCredentials encrypts password — raw stored value differs from plaintext', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_CRED', teamName: 'Cred Test' });
+  upsertCaldavCredentials(db, 'T_CRED', 'admin', 'super-secret-pass');
+  const raw = db.prepare('SELECT password FROM caldav_credentials WHERE workspace_id = ?').get('T_CRED');
+  assert.notStrictEqual(raw.password, 'super-secret-pass');
+  assert.ok(raw.password.includes(':'), 'stored value must be in iv:ct:tag format');
+  db.close();
+});
+
+test('getCaldavCredentials decrypts password — returns original plaintext', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_CRED2', teamName: 'Cred Test 2' });
+  upsertCaldavCredentials(db, 'T_CRED2', 'user@example.com', 'super-secret-pass');
+  const creds = getCaldavCredentials(db, 'T_CRED2');
+  assert.strictEqual(creds.username, 'user@example.com');
+  assert.strictEqual(creds.password, 'super-secret-pass');
+  db.close();
+});
+
+test('getCaldavCredentials returns null for unknown workspace', () => {
+  const db = memDb();
+  assert.strictEqual(getCaldavCredentials(db, 'T_NONE'), null);
+  db.close();
+});
+
+test('upsertCaldavCredentials is idempotent — updates on conflict', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_IDEM', teamName: 'Idem Test' });
+  upsertCaldavCredentials(db, 'T_IDEM', 'user1', 'pass1');
+  upsertCaldavCredentials(db, 'T_IDEM', 'user2', 'pass2');
+  const creds = getCaldavCredentials(db, 'T_IDEM');
+  assert.strictEqual(creds.username, 'user2');
+  assert.strictEqual(creds.password, 'pass2');
   db.close();
 });
