@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>workspaces table — post-OAuth state</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; margin: 0; padding: 24px; }
+  h2 { color: #a78bfa; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 20px; }
+  svg { width: 100%; max-width: 860px; display: block; margin: 0 auto; }
+  .tbl-header { fill: #1e293b; }
+  .tbl-row-even { fill: #0f172a; }
+  .tbl-row-odd  { fill: #0d1627; }
+  .tbl-border { fill: none; stroke: #334155; stroke-width: 1; }
+  .col-name { font-size: 11px; fill: #7dd3fc; font-family: 'Courier New', monospace; }
+  .col-type { font-size: 10px; fill: #64748b; }
+  .col-note { font-size: 10px; fill: #94a3b8; }
+  .col-enc  { font-size: 10px; fill: #f59e0b; font-weight: 600; }
+  .col-set  { font-size: 10px; fill: #34d399; }
+  .col-null { font-size: 10px; fill: #475569; }
+  .section-label { font-size: 11px; fill: #a78bfa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+  .new-fn-box { fill: #1a0a40; stroke: #7c3aed; stroke-width: 1.5; }
+  .new-fn-label { font-size: 11px; fill: #a78bfa; font-weight: 600; font-family: 'Courier New', monospace; }
+  .arrow { stroke: #7c3aed; stroke-width: 1.5; fill: none; marker-end: url(#arr-purple); }
+  .legend-new   { fill: #34d399; }
+  .legend-enc   { fill: #f59e0b; }
+  .legend-exist { fill: #475569; }
+</style>
+</head>
+<body>
+<h2>workspaces table — fields set by OAuth install</h2>
+<svg viewBox="0 0 860 480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-purple" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#7c3aed"/>
+    </marker>
+  </defs>
+
+  <!-- Table: workspaces -->
+  <text x="20" y="22" class="section-label">workspaces (existing table)</text>
+
+  <!-- Header row -->
+  <rect x="20" y="30" width="560" height="24" rx="0" class="tbl-header"/>
+  <text x="30"  y="46" class="col-name" font-weight="700">column</text>
+  <text x="180" y="46" class="col-type" font-weight="700">type</text>
+  <text x="280" y="46" class="col-note" font-weight="700">set by OAuth?</text>
+  <text x="430" y="46" class="col-note" font-weight="700">notes</text>
+
+  <!-- Rows -->
+  <!-- team_id -->
+  <rect x="20" y="54" width="560" height="22" class="tbl-row-even"/>
+  <text x="30"  y="69" class="col-name">team_id</text>
+  <text x="180" y="69" class="col-type">TEXT PK</text>
+  <text x="280" y="69" class="col-set">✓ always</text>
+  <text x="430" y="69" class="col-note">from oauth.v2.access response</text>
+
+  <!-- team_name -->
+  <rect x="20" y="76" width="560" height="22" class="tbl-row-odd"/>
+  <text x="30"  y="91" class="col-name">team_name</text>
+  <text x="180" y="91" class="col-type">TEXT</text>
+  <text x="280" y="91" class="col-set">✓ always</text>
+  <text x="430" y="91" class="col-note">from team.name in response</text>
+
+  <!-- bot_token — encrypted, NEW for OAuth -->
+  <rect x="20" y="98" width="560" height="22" class="tbl-row-even"/>
+  <text x="30"  y="113" class="col-name">bot_token</text>
+  <text x="180" y="113" class="col-type">TEXT</text>
+  <text x="280" y="113" class="col-enc">✓ encrypted</text>
+  <text x="430" y="113" class="col-enc">iv:ct:tag via crypto.js — NEW: updated on re-install</text>
+
+  <!-- installed_by -->
+  <rect x="20" y="120" width="560" height="22" class="tbl-row-odd"/>
+  <text x="30"  y="135" class="col-name">installed_by</text>
+  <text x="180" y="135" class="col-type">TEXT</text>
+  <text x="280" y="135" class="col-set">✓ always</text>
+  <text x="430" y="135" class="col-note">authed_user.id from response</text>
+
+  <!-- installed_at -->
+  <rect x="20" y="142" width="560" height="22" class="tbl-row-even"/>
+  <text x="30"  y="157" class="col-name">installed_at</text>
+  <text x="180" y="157" class="col-type">TEXT</text>
+  <text x="280" y="157" class="col-set">✓ always</text>
+  <text x="430" y="157" class="col-note">ISO timestamp of install</text>
+
+  <!-- active -->
+  <rect x="20" y="164" width="560" height="22" class="tbl-row-odd"/>
+  <text x="30"  y="179" class="col-name">active</text>
+  <text x="180" y="179" class="col-type">INTEGER</text>
+  <text x="280" y="179" class="col-set">✓ set to 1</text>
+  <text x="430" y="179" class="col-note">re-install reactivates a deactivated workspace</text>
+
+  <!-- locale, timezone, etc -->
+  <rect x="20" y="186" width="560" height="22" class="tbl-row-even"/>
+  <text x="30"  y="201" class="col-name">locale, timezone</text>
+  <text x="180" y="201" class="col-type">TEXT</text>
+  <text x="280" y="201" class="col-null">— NULL</text>
+  <text x="430" y="201" class="col-note">set during onboarding (#48), not OAuth</text>
+
+  <!-- error_channel, nextcloud_url -->
+  <rect x="20" y="208" width="560" height="22" class="tbl-row-odd"/>
+  <text x="30"  y="223" class="col-name">error_channel, nextcloud_url</text>
+  <text x="180" y="223" class="col-type">TEXT</text>
+  <text x="280" y="223" class="col-null">— NULL</text>
+  <text x="430" y="223" class="col-note">set during onboarding (#48)</text>
+
+  <!-- table border -->
+  <rect x="20" y="30" width="560" height="200" class="tbl-border"/>
+  <line x1="175" y1="30" x2="175" y2="230" stroke="#334155" stroke-width="0.5"/>
+  <line x1="275" y1="30" x2="275" y2="230" stroke="#334155" stroke-width="0.5"/>
+  <line x1="428" y1="30" x2="428" y2="230" stroke="#334155" stroke-width="0.5"/>
+
+  <!-- New function box -->
+  <text x="20" y="262" class="section-label">New db.js functions</text>
+
+  <rect x="20" y="272" width="560" height="64" rx="6" class="new-fn-box"/>
+  <text x="36" y="292" class="new-fn-label">upsertWorkspaceFromOAuth(db, { teamId, teamName, botToken, installedBy })</text>
+  <text x="36" y="310" class="col-note">— ON CONFLICT: updates bot_token, installed_by, installed_at, active=1</text>
+  <text x="36" y="326" class="col-note">— bot_token is encrypted via encrypt() before INSERT/UPDATE</text>
+
+  <rect x="20" y="346" width="560" height="50" rx="6" class="new-fn-box"/>
+  <text x="36" y="366" class="new-fn-label">listActiveWorkspaces(db)</text>
+  <text x="36" y="384" class="col-note">— SELECT * FROM workspaces WHERE active = 1; decrypts bot_token</text>
+
+  <!-- Contrast with existing function -->
+  <text x="20" y="418" class="section-label">Existing (unchanged)</text>
+  <rect x="20" y="426" width="560" height="42" rx="6" fill="#0f172a" stroke="#334155"/>
+  <text x="36" y="446" class="new-fn-label" fill="#475569">upsertWorkspace(db, opts)  ← config-file seeding</text>
+  <text x="36" y="460" class="col-note">— ON CONFLICT: does NOT update bot_token (intentional; preserves manually set tokens)</text>
+
+  <!-- Legend -->
+  <rect x="620" y="36" width="10" height="10" rx="2" class="legend-new"/>
+  <text x="636" y="46" class="col-note">set by OAuth</text>
+  <rect x="620" y="54" width="10" height="10" rx="2" class="legend-enc"/>
+  <text x="636" y="64" class="col-note">encrypted at rest</text>
+  <rect x="620" y="72" width="10" height="10" rx="2" class="legend-exist"/>
+  <text x="636" y="82" class="col-note">null / set later</text>
+</svg>
+</body>
+</html>

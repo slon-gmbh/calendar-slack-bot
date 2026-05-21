@@ -1,0 +1,619 @@
+<!-- issue: 46 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slack OAuth Installation Flow — Design Spec</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1e293b;
+    --surface2: #0d1627;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --purple: #a78bfa;
+    --blue: #7dd3fc;
+    --green: #34d399;
+    --amber: #f59e0b;
+    --red: #f87171;
+    --code-bg: #0d1627;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sticky TOC sidebar */
+  nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--surface2);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    overflow-y: auto;
+  }
+
+  nav h3 {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dim);
+    margin-bottom: 12px;
+  }
+
+  nav a {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    line-height: 1.4;
+  }
+  nav a:hover { background: var(--surface); color: var(--text); }
+  nav a.sub { padding-left: 20px; font-size: 0.72rem; color: var(--dim); }
+
+  /* Main content */
+  main {
+    flex: 1;
+    max-width: 860px;
+    padding: 40px 48px;
+    overflow-x: hidden;
+  }
+
+  h1 { font-size: 1.5rem; color: var(--text); margin-bottom: 6px; }
+  .meta { font-size: 0.8rem; color: var(--dim); margin-bottom: 32px; }
+  .meta a { color: var(--blue); text-decoration: none; }
+
+  h2 {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--purple);
+    margin: 40px 0 16px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  h3 { font-size: 0.95rem; color: var(--blue); margin: 24px 0 10px; }
+  h4 { font-size: 0.85rem; color: var(--muted); margin: 16px 0 8px; }
+
+  p { font-size: 0.88rem; line-height: 1.65; color: var(--muted); margin-bottom: 12px; }
+
+  /* Locked decisions table */
+  .decisions-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin-bottom: 24px;
+  }
+  .decisions-table th {
+    background: var(--surface);
+    color: var(--purple);
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .decisions-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    vertical-align: top;
+  }
+  .decisions-table tr:nth-child(even) td { background: var(--surface2); }
+  .decisions-table code { color: var(--blue); font-size: 0.78rem; }
+
+  /* Callout boxes */
+  .callout {
+    border-left: 3px solid var(--purple);
+    background: #1a0f3a;
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .callout.amber { border-left-color: var(--amber); background: #1c1507; }
+  .callout.green { border-left-color: var(--green); background: #051a10; }
+  .callout.red { border-left-color: var(--red); background: #1a0505; }
+  .callout strong { color: var(--text); }
+  .callout code { font-family: 'Courier New', monospace; color: var(--blue); font-size: 0.8rem; }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  .kw { color: #c084fc; }
+  .fn { color: var(--blue); }
+  .str { color: var(--green); }
+  .cmt { color: var(--dim); }
+  .ty { color: var(--amber); }
+
+  /* Module chips */
+  .module-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .chip {
+    font-size: 0.75rem;
+    font-family: 'Courier New', monospace;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .chip.new { border-color: var(--green); color: var(--green); background: #051a10; }
+  .chip.mod { border-color: var(--blue); color: var(--blue); background: #0a1a2e; }
+  .chip.test { border-color: var(--amber); color: var(--amber); background: #1c1507; }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    vertical-align: middle;
+  }
+  .badge-p0 { background: #7f1d1d; color: #fca5a5; }
+  .badge-m  { background: #1e3a5f; color: #7dd3fc; }
+  .badge-locked { background: #312e81; color: #a78bfa; }
+  .badge-oos { background: #1c1507; color: #d97706; }
+  .badge-new { background: #064e3b; color: #6ee7b7; }
+
+  /* Details / collapsibles */
+  details {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 0.82rem;
+  }
+  summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--muted);
+    font-weight: 600;
+    list-style: none;
+  }
+  summary::before { content: '▶  '; color: var(--dim); font-size: 0.7rem; }
+  details[open] summary::before { content: '▼  '; }
+  details > div { padding: 0 14px 14px; color: var(--muted); line-height: 1.55; }
+  details > div p { margin-bottom: 8px; }
+
+  /* iframe wrapper */
+  .diagram-frame {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 16px 0;
+    background: var(--bg);
+  }
+
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; line-height: 1.5; }
+  li code, p code { font-family: 'Courier New', monospace; color: var(--blue); font-size: 0.82rem; background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+
+  table.ac-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin: 12px 0 20px;
+  }
+  table.ac-table th { background: var(--surface); color: var(--muted); padding: 7px 10px; border: 1px solid var(--border); text-align: left; font-size: 0.72rem; text-transform: uppercase; }
+  table.ac-table td { padding: 7px 10px; border: 1px solid var(--border); color: var(--muted); }
+  table.ac-table tr:nth-child(even) td { background: var(--surface2); }
+  .ac-id { font-family: 'Courier New', monospace; color: var(--purple); font-size: 0.75rem; }
+  .ac-check { color: var(--green); }
+</style>
+</head>
+<body>
+
+<nav>
+  <h3>Contents</h3>
+  <a href="#locked">Locked Decisions</a>
+  <a href="#affected">Affected Modules</a>
+  <a href="#architecture">Architecture</a>
+  <a class="sub" href="#arch-routes">Routes</a>
+  <a class="sub" href="#arch-csrf">CSRF State</a>
+  <a class="sub" href="#arch-server">server.js changes</a>
+  <a href="#oauth-module">src/oauth.js</a>
+  <a class="sub" href="#oauth-exports">Exports</a>
+  <a class="sub" href="#oauth-envvars">Env vars</a>
+  <a class="sub" href="#oauth-scopes">Scopes</a>
+  <a class="sub" href="#oauth-errors">Error handling</a>
+  <a href="#db-changes">db.js Changes</a>
+  <a class="sub" href="#db-upsert">upsertWorkspaceFromOAuth</a>
+  <a class="sub" href="#db-list">listActiveWorkspaces</a>
+  <a href="#testing">Testing</a>
+  <a href="#oos">Out of Scope</a>
+  <a href="#ac">Acceptance Criteria</a>
+</nav>
+
+<main>
+  <h1>Slack OAuth Installation Flow</h1>
+  <p class="meta">
+    Issue <a href="https://github.com/slon-gmbh/calendar-slack-bot/issues/46">#46</a> &nbsp;·&nbsp;
+    Branch: <code>v2</code> &nbsp;·&nbsp;
+    Sprint 3 (May 18–31, 2026) &nbsp;·&nbsp;
+    <span class="badge badge-p0">P0</span>
+    <span class="badge badge-m">M</span>
+  </p>
+
+  <p>Any Slack workspace admin visits the bot's install URL and clicks "Add to Slack". The OAuth v2 flow exchanges the authorization code for a bot token, which is encrypted and stored in the workspace database. Blocked by: <a style="color:var(--blue)">#44</a> (multi-tenant schema), <a style="color:var(--blue)">#45</a> (credential encryption).</p>
+
+  <!-- ─── LOCKED DECISIONS ─────────────────────────────────────────── -->
+  <h2 id="locked">Locked Decisions</h2>
+
+  <table class="decisions-table">
+    <thead>
+      <tr><th>Decision</th><th>Choice</th><th>Rationale</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>OAuth handler location</td>
+        <td><code>src/oauth.js</code> <span class="badge badge-locked">locked</span></td>
+        <td>server.js will accumulate more routes in #26/#27; a dedicated module keeps boundaries clean and allows isolated testing.</td>
+      </tr>
+      <tr>
+        <td>db.js — token update on re-install</td>
+        <td>New <code>upsertWorkspaceFromOAuth()</code> <span class="badge badge-locked">locked</span></td>
+        <td>Existing <code>upsertWorkspace()</code> intentionally preserves <code>bot_token</code> on conflict (config-file seeding). OAuth always needs to update the token; a separate function makes the invariant explicit.</td>
+      </tr>
+      <tr>
+        <td>CSRF state storage</td>
+        <td>In-memory <code>Map&lt;state, expiryMs&gt;</code> <span class="badge badge-locked">locked</span></td>
+        <td>Fly.io runs a single persistent instance. In-memory is sufficient; no Redis/DB round-trips needed for ephemeral install state.</td>
+      </tr>
+      <tr>
+        <td>Slack OAuth API version</td>
+        <td><code>oauth.v2.access</code> (Bot Token) <span class="badge badge-locked">locked</span></td>
+        <td>Returns a <code>bot_token</code> scoped to the workspace. No OpenID connect or user tokens needed.</td>
+      </tr>
+      <tr>
+        <td>Requested scopes</td>
+        <td><code>chat:write canvases:write im:write commands</code> <span class="badge badge-locked">locked</span></td>
+        <td>Forward-looking: avoid re-authorization prompts when #26, #27, #48 land. Current bot only uses <code>chat:write</code> and <code>canvases:write</code>.</td>
+      </tr>
+      <tr>
+        <td>Cron scheduler scope</td>
+        <td>Untouched in this issue <span class="badge badge-locked">locked</span></td>
+        <td>Per-workspace cron is issue #47. server.js continues using <code>WORKSPACE_ID</code> env var for its cron jobs.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ─── AFFECTED MODULES ─────────────────────────────────────────── -->
+  <h2 id="affected">Affected Modules</h2>
+  <div class="module-list">
+    <span class="chip new">src/oauth.js  NEW</span>
+    <span class="chip mod">src/db.js</span>
+    <span class="chip mod">src/server.js</span>
+    <span class="chip test new">test/oauth.test.js  NEW</span>
+    <span class="chip test">test/db.test.js</span>
+  </div>
+
+  <!-- ─── ARCHITECTURE ─────────────────────────────────────────────── -->
+  <h2 id="architecture">Architecture</h2>
+
+  <p>The OAuth flow lives entirely in <code>src/oauth.js</code>. <code>server.js</code> calls <code>validateSlackEnvVars()</code> at startup and delegates matching HTTP requests to <code>handleOAuthRequest(db, req, res)</code>. The cron scheduler in <code>server.js</code> is unchanged.</p>
+
+  <div class="diagram-frame">
+    <iframe src="assets/oauth-installation/diagram-oauth-flow.html" width="100%" height="720" style="border:none;background:#0f1117;display:block;"></iframe>
+  </div>
+
+  <h3 id="arch-routes">Routes</h3>
+
+  <h4>GET /slack/install</h4>
+  <ol>
+    <li>Generate a CSRF state token: <code>crypto.randomBytes(16).toString('hex')</code></li>
+    <li>Store in <code>PENDING_STATES</code> map with expiry = <code>Date.now() + 10 * 60 * 1000</code></li>
+    <li>Redirect <code>302</code> to Slack's authorize URL (see Scopes section)</li>
+  </ol>
+
+  <h4>GET /slack/oauth/callback</h4>
+  <ol>
+    <li>Parse <code>code</code> and <code>state</code> from the query string</li>
+    <li>Validate state: missing → 400; not in map → 400; expired → 400. Delete from map regardless.</li>
+    <li>Call <code>WebClient.oauth.v2.access({ client_id, client_secret, code })</code></li>
+    <li>On Slack error: respond 400 with inline HTML error page</li>
+    <li>On success: call <code>upsertWorkspaceFromOAuth(db, { teamId, teamName, botToken, installedBy })</code></li>
+    <li>Redirect <code>302</code> to <code>/slack/install/success</code></li>
+  </ol>
+
+  <h4>GET /slack/install/success</h4>
+  <p>Responds with a minimal inline HTML "Installation complete" page. Served by <code>oauth.js</code> — no template files.</p>
+
+  <h3 id="arch-csrf">CSRF State</h3>
+
+  <div class="callout">
+    <strong>Design choice:</strong> The <code>PENDING_STATES</code> map lives at module scope in <code>oauth.js</code>. States are consumed immediately on use (success <em>or</em> failure) and lazily purged: each time a new state is added, stale entries are swept. TTL is 10 minutes. A second request with the same state returns 400 even if not expired — state is single-use.
+  </div>
+
+  <h3 id="arch-server">server.js changes</h3>
+
+  <pre><span class="kw">const</span> { <span class="fn">handleOAuthRequest</span>, <span class="fn">validateSlackEnvVars</span> } = <span class="fn">require</span>(<span class="str">'./oauth.js'</span>);
+
+<span class="kw">async function</span> <span class="fn">start</span>() {
+  <span class="fn">validateEncryptionKey</span>();
+  <span class="fn">validateSlackEnvVars</span>();  <span class="cmt">// ← new: fails fast if CLIENT_ID/SECRET missing</span>
+  <span class="cmt">// ... existing cron setup (unchanged) ...</span>
+
+  <span class="kw">const</span> httpServer = http.<span class="fn">createServer</span>(<span class="kw">async</span> (req, res) => {
+    <span class="kw">if</span> (req.method === <span class="str">'GET'</span> &amp;&amp; req.url === <span class="str">'/health'</span>) {
+      res.<span class="fn">writeHead</span>(<span class="ty">200</span>, { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> });
+      res.<span class="fn">end</span>(JSON.<span class="fn">stringify</span>({ status: <span class="str">'ok'</span> }));
+    } <span class="kw">else if</span> (<span class="kw">await</span> <span class="fn">handleOAuthRequest</span>(db, req, res)) {
+      <span class="cmt">// handled by oauth.js</span>
+    } <span class="kw">else</span> {
+      res.<span class="fn">writeHead</span>(<span class="ty">404</span>);
+      res.<span class="fn">end</span>();
+    }
+  });
+}</pre>
+
+  <!-- ─── src/oauth.js ──────────────────────────────────────────────── -->
+  <h2 id="oauth-module">src/oauth.js</h2>
+
+  <h3 id="oauth-exports">Exports</h3>
+
+  <table class="decisions-table">
+    <thead><tr><th>Export</th><th>Signature</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>validateSlackEnvVars</code></td>
+        <td><code>(): void</code></td>
+        <td>Throws <code>Error</code> if <code>SLACK_CLIENT_ID</code>, <code>SLACK_CLIENT_SECRET</code>, or <code>SLACK_REDIRECT_HOST</code> is missing or empty. Message includes the missing var name.</td>
+      </tr>
+      <tr>
+        <td><code>handleOAuthRequest</code></td>
+        <td><code>(db, req, res): Promise&lt;boolean&gt;</code></td>
+        <td>Returns <code>true</code> if the request matched an OAuth route and was fully handled. Returns <code>false</code> for all other paths — server.js falls through to its 404 handler.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 id="oauth-envvars">Environment Variables</h3>
+
+  <table class="decisions-table">
+    <thead><tr><th>Var</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>SLACK_CLIENT_ID</code></td><td>Yes</td><td>From Slack app credentials</td></tr>
+      <tr><td><code>SLACK_CLIENT_SECRET</code></td><td>Yes</td><td>From Slack app credentials</td></tr>
+      <tr><td><code>SLACK_REDIRECT_HOST</code></td><td>Yes</td><td>Hostname only, e.g. <code>calendar-bot.fly.dev</code>. Callback URL becomes <code>https://&lt;SLACK_REDIRECT_HOST&gt;/slack/oauth/callback</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout amber">
+    <strong>Note:</strong> <code>SLACK_REDIRECT_HOST</code> must also be configured as an allowed redirect URL in the Slack app settings. The bot token scopes must match the requested scopes below.
+  </div>
+
+  <h3 id="oauth-scopes">Requested Bot Token Scopes</h3>
+
+  <pre>chat:write canvases:write im:write commands</pre>
+
+  <p><code>chat:write</code> and <code>canvases:write</code> are used immediately (digest posting, canvas updates). <code>im:write</code> is needed for the onboarding DM in #48. <code>commands</code> is needed for slash commands in #26. Requesting all upfront avoids a re-authorization prompt when those issues ship.</p>
+
+  <h4>Authorize URL structure</h4>
+  <pre>https://slack.com/oauth/v2/authorize
+  ?client_id=<span class="ty">{SLACK_CLIENT_ID}</span>
+  &amp;scope=chat%3Awrite%20canvases%3Awrite%20im%3Awrite%20commands
+  &amp;redirect_uri=https%3A%2F%2F<span class="ty">{SLACK_REDIRECT_HOST}</span>%2Fslack%2Foauth%2Fcallback
+  &amp;state=<span class="ty">{state}</span></pre>
+
+  <h3 id="oauth-errors">Error Handling</h3>
+
+  <table class="decisions-table">
+    <thead><tr><th>Condition</th><th>Response</th></tr></thead>
+    <tbody>
+      <tr><td>Missing <code>state</code> query param</td><td>400 inline HTML error page</td></tr>
+      <tr><td>Unknown <code>state</code> (not in map)</td><td>400 inline HTML error page</td></tr>
+      <tr><td>Expired <code>state</code> (&gt;10 min)</td><td>400 inline HTML error page</td></tr>
+      <tr><td>User denies access (<code>?error=access_denied</code> from Slack)</td><td>400 inline HTML error page; state consumed</td></tr>
+      <tr><td>Slack rejects code (<code>oauth.v2.access</code> throws)</td><td>400 inline HTML error page</td></tr>
+      <tr><td>DB write fails</td><td>500 inline HTML error page (error message not exposed)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout red">
+    <strong>Security:</strong> Error pages must not include the raw Slack API error message or the <code>code</code> value. Log the error server-side; return a generic "Installation failed. Please try again." message to the browser.
+  </div>
+
+  <!-- ─── db.js CHANGES ─────────────────────────────────────────────── -->
+  <h2 id="db-changes">db.js Changes</h2>
+
+  <div class="diagram-frame">
+    <iframe src="assets/oauth-installation/diagram-db-schema.html" width="100%" height="500" style="border:none;background:#0f1117;display:block;"></iframe>
+  </div>
+
+  <h3 id="db-upsert">upsertWorkspaceFromOAuth(db, opts)</h3>
+
+  <p>Inserts a new workspace row or updates an existing one. Always updates <code>bot_token</code>, <code>installed_by</code>, <code>installed_at</code>, and resets <code>active</code> to 1 (re-activates deactivated workspaces).</p>
+
+  <pre><span class="kw">function</span> <span class="fn">upsertWorkspaceFromOAuth</span>(db, { teamId, teamName, botToken, installedBy }) {
+  db.<span class="fn">prepare</span>(<span class="str">`
+    INSERT INTO workspaces (team_id, team_name, bot_token, installed_by, installed_at, active)
+    VALUES (?, ?, ?, ?, ?, 1)
+    ON CONFLICT(team_id) DO UPDATE SET
+      team_name    = excluded.team_name,
+      bot_token    = excluded.bot_token,
+      installed_by = excluded.installed_by,
+      installed_at = excluded.installed_at,
+      active       = 1
+  `</span>).<span class="fn">run</span>(teamId, teamName, <span class="fn">encrypt</span>(botToken), installedBy, <span class="kw">new</span> <span class="ty">Date</span>().<span class="fn">toISOString</span>());
+}</pre>
+
+  <div class="callout">
+    <strong>Contrast with <code>upsertWorkspace()</code>:</strong> The config-file seeding function intentionally does <em>not</em> update <code>bot_token</code> on conflict, because the config file may not carry the live token. These two functions have different invariants and must remain separate — no flags, no overloads.
+  </div>
+
+  <p>Fields <code>locale</code>, <code>timezone</code>, <code>error_channel</code>, <code>nextcloud_url</code> are not set here — they are populated during workspace onboarding (#48).</p>
+
+  <h3 id="db-list">listActiveWorkspaces(db)</h3>
+
+  <p>Returns all active workspaces as an array of plain objects, with <code>bot_token</code> decrypted. Used by the per-workspace cron scheduler in #47.</p>
+
+  <pre><span class="kw">function</span> <span class="fn">listActiveWorkspaces</span>(db) {
+  <span class="kw">const</span> rows = db.<span class="fn">prepare</span>(<span class="str">'SELECT * FROM workspaces WHERE active = 1'</span>).<span class="fn">all</span>();
+  <span class="kw">return</span> rows.<span class="fn">map</span>(row => {
+    <span class="kw">if</span> (row.bot_token) row.bot_token = <span class="fn">decrypt</span>(row.bot_token);
+    <span class="kw">return</span> row;
+  });
+}</pre>
+
+  <!-- ─── TESTING ────────────────────────────────────────────────────── -->
+  <h2 id="testing">Testing</h2>
+
+  <h3>test/oauth.test.js (new)</h3>
+
+  <p>Uses <code>node:test</code> + <code>node:assert</code>. Sets <code>process.env.ENCRYPTION_KEY = '0'.repeat(64)</code> before require. Stubs <code>oauth.v2.access</code> by injecting a mock WebClient via a test helper.</p>
+
+  <table class="ac-table">
+    <thead><tr><th>Test</th><th>What it verifies</th></tr></thead>
+    <tbody>
+      <tr><td>validateSlackEnvVars: missing CLIENT_ID</td><td>throws with message containing <code>SLACK_CLIENT_ID</code></td></tr>
+      <tr><td>validateSlackEnvVars: missing CLIENT_SECRET</td><td>throws with message containing <code>SLACK_CLIENT_SECRET</code></td></tr>
+      <tr><td>validateSlackEnvVars: missing REDIRECT_HOST</td><td>throws with message containing <code>SLACK_REDIRECT_HOST</code></td></tr>
+      <tr><td>validateSlackEnvVars: all set</td><td>does not throw</td></tr>
+      <tr><td>handleOAuthRequest: unrecognised path</td><td>returns <code>false</code></td></tr>
+      <tr><td>GET /slack/install</td><td>responds with 302; Location contains <code>slack.com/oauth/v2/authorize</code>; <code>state</code> param present</td></tr>
+      <tr><td>GET /slack/oauth/callback: missing state</td><td>responds 400</td></tr>
+      <tr><td>GET /slack/oauth/callback: unknown state</td><td>responds 400</td></tr>
+      <tr><td>GET /slack/oauth/callback: expired state</td><td>responds 400</td></tr>
+      <tr><td>GET /slack/oauth/callback: user denied (<code>?error=access_denied</code>)</td><td>responds 400; state consumed</td></tr>
+      <tr><td>GET /slack/oauth/callback: Slack error</td><td>responds 400</td></tr>
+      <tr><td>GET /slack/oauth/callback: success</td><td>calls upsertWorkspaceFromOAuth with correct args; responds 302 to /slack/install/success</td></tr>
+    </tbody>
+  </table>
+
+  <h3>test/db.test.js additions</h3>
+
+  <table class="ac-table">
+    <thead><tr><th>Test</th><th>What it verifies</th></tr></thead>
+    <tbody>
+      <tr><td>upsertWorkspaceFromOAuth: new insert</td><td>row created; raw <code>bot_token</code> in DB is encrypted (not plaintext); <code>active = 1</code></td></tr>
+      <tr><td>upsertWorkspaceFromOAuth: getWorkspace decrypts</td><td><code>getWorkspace()</code> returns plaintext token</td></tr>
+      <tr><td>upsertWorkspaceFromOAuth: re-install</td><td>second call updates <code>bot_token</code> and <code>installed_at</code>; other fields preserved</td></tr>
+      <tr><td>listActiveWorkspaces: returns active only</td><td>inactive workspace (active=0) excluded</td></tr>
+      <tr><td>listActiveWorkspaces: decrypts tokens</td><td>returned rows have plaintext <code>bot_token</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ─── OUT OF SCOPE ──────────────────────────────────────────────── -->
+  <h2 id="oos">Out of Scope</h2>
+
+  <table class="decisions-table">
+    <thead><tr><th>Item</th><th>Issue</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>DM installing admin after install</td>
+        <td><span class="badge badge-oos">#48</span></td>
+        <td>A <code>// TODO #48</code> comment is left in the callback handler. No DM is sent in this issue.</td>
+      </tr>
+      <tr>
+        <td>Per-workspace cron scheduling</td>
+        <td><span class="badge badge-oos">#47</span></td>
+        <td><code>listActiveWorkspaces()</code> is added here as a foundation; the cron refactor happens in #47.</td>
+      </tr>
+      <tr>
+        <td>Slack slash command handler</td>
+        <td><span class="badge badge-oos">#26</span></td>
+        <td>Future route — will follow the same <code>handleOAuthRequest</code> pattern.</td>
+      </tr>
+      <tr>
+        <td>Slack interactivity handler</td>
+        <td><span class="badge badge-oos">#27</span></td>
+        <td>Future route — same pattern.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ─── ACCEPTANCE CRITERIA ──────────────────────────────────────── -->
+  <h2 id="ac">Acceptance Criteria</h2>
+
+  <table class="ac-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Criterion</th>
+        <th>In scope</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="ac-id">AC-01</td>
+        <td><code>GET /slack/install</code> redirects to correct Slack OAuth URL with required scopes and a <code>state</code> parameter</td>
+        <td class="ac-check">✓</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-02</td>
+        <td><code>GET /slack/oauth/callback</code> exchanges code, stores workspace row with encrypted <code>bot_token</code></td>
+        <td class="ac-check">✓</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-03</td>
+        <td>Duplicate installs (same <code>team_id</code> re-installing) update the token without error</td>
+        <td class="ac-check">✓</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-04</td>
+        <td>Invalid/expired code returns a user-friendly 400 error page (no raw error exposed)</td>
+        <td class="ac-check">✓</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-05</td>
+        <td>Bot DMs installing admin after successful install</td>
+        <td><span class="badge badge-oos">deferred #48</span></td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-06</td>
+        <td><code>SLACK_CLIENT_ID</code>, <code>SLACK_CLIENT_SECRET</code>, or <code>SLACK_REDIRECT_HOST</code> missing fails fast at startup (before HTTP server binds)</td>
+        <td class="ac-check">✓</td>
+      </tr>
+      <tr>
+        <td class="ac-id">AC-07</td>
+        <td>CSRF state mismatch or replay returns 400</td>
+        <td class="ac-check">✓</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <details>
+    <summary>Alternatives considered</summary>
+    <div>
+      <p><strong>Option A: Inline routes in server.js</strong> — Rejected. server.js will accumulate routes in #26 and #27; inlining OAuth would make the file hard to navigate and impossible to test in isolation.</p>
+      <p><strong>Option C: @slack/oauth package</strong> — Rejected. Adds a dependency for 2 route handlers. Slack's official package handles token rotation and installation stores that we don't need (bot_token updates are handled by <code>upsertWorkspaceFromOAuth</code>).</p>
+      <p><strong>Redis/DB for CSRF state</strong> — Rejected. Unnecessary complexity. Fly.io runs a single persistent instance; in-memory state is recoverable within the 10-minute TTL window. If the instance restarts, the admin simply clicks "Add to Slack" again.</p>
+    </div>
+  </details>
+
+</main>
+</body>
+</html>
