@@ -96,14 +96,22 @@ async function start() {
 
   const port = parseInt(process.env.PORT || '8080', 10);
   const httpServer = http.createServer(async (req, res) => {
-    if (req.method === 'GET' && req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok' }));
-    } else if (await handleOAuthRequest(db, req, res)) {
-      // handled by oauth.js
-    } else {
-      res.writeHead(404);
-      res.end();
+    try {
+      if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+      } else if (await handleOAuthRequest(db, req, res)) {
+        // handled by oauth.js
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    } catch (err) {
+      console.error('[http] Unhandled error:', err.message);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end();
+      }
     }
   });
   httpServer.listen(port, () => {
