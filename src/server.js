@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const { loadConfigFromDb } = require('./config.js');
 const { openDb } = require('./db.js');
 const { runScheduledDigests, runChangeDetection } = require('./runner.js');
+const { validateEncryptionKey } = require('./crypto.js');
 
 const DAY_MAP = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
@@ -38,6 +39,7 @@ function scheduleStringToCron(str) {
 }
 
 async function start() {
+  validateEncryptionKey();
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
 
