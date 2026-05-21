@@ -326,6 +326,37 @@ function getCaldavCredentials(db, workspaceId) {
   return { username: row.username, password: decrypt(row.password) };
 }
 
+/**
+ * Insert or update a workspace from an OAuth install. Always updates bot_token and reactivates.
+ * @param {import('better-sqlite3').Database} db
+ * @param {{ teamId: string, teamName: string, botToken: string, installedBy: string }} opts
+ */
+function upsertWorkspaceFromOAuth(db, { teamId, teamName, botToken, installedBy }) {
+  db.prepare(`
+    INSERT INTO workspaces (team_id, team_name, bot_token, installed_by, installed_at, active)
+    VALUES (?, ?, ?, ?, ?, 1)
+    ON CONFLICT(team_id) DO UPDATE SET
+      team_name    = excluded.team_name,
+      bot_token    = excluded.bot_token,
+      installed_by = excluded.installed_by,
+      installed_at = excluded.installed_at,
+      active       = 1
+  `).run(teamId, teamName, encrypt(botToken), installedBy, new Date().toISOString());
+}
+
+/**
+ * Return all active workspaces as an array with bot_token decrypted.
+ * @param {import('better-sqlite3').Database} db
+ * @returns {Array<Object>}
+ */
+function listActiveWorkspaces(db) {
+  const rows = db.prepare('SELECT * FROM workspaces WHERE active = 1').all();
+  return rows.map(row => {
+    if (row.bot_token) row.bot_token = decrypt(row.bot_token);
+    return row;
+  });
+}
+
 module.exports = {
   openDb,
   loadEvents,
@@ -339,5 +370,7 @@ module.exports = {
   getWorkspace,
   upsertWorkspace,
   upsertCaldavCredentials,
-  getCaldavCredentials
+  getCaldavCredentials,
+  upsertWorkspaceFromOAuth,
+  listActiveWorkspaces
 };

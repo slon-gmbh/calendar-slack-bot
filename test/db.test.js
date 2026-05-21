@@ -244,3 +244,54 @@ test('upsertCaldavCredentials is idempotent — updates on conflict', () => {
   assert.strictEqual(creds.password, 'pass2');
   db.close();
 });
+
+const { upsertWorkspaceFromOAuth, listActiveWorkspaces } = require('../src/db.js');
+
+test('upsertWorkspaceFromOAuth stores workspace with encrypted bot_token', () => {
+  const db = memDb();
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_OAUTH1', teamName: 'Acme', botToken: 'xoxb-live-token', installedBy: 'U_ADMIN' });
+  const raw = db.prepare('SELECT bot_token FROM workspaces WHERE team_id = ?').get('T_OAUTH1');
+  assert.ok(raw, 'row should exist');
+  assert.notStrictEqual(raw.bot_token, 'xoxb-live-token', 'stored value must be encrypted');
+  assert.ok(raw.bot_token.includes(':'), 'stored value must be in iv:ct:tag format');
+  db.close();
+});
+
+test('upsertWorkspaceFromOAuth — getWorkspace decrypts bot_token', () => {
+  const db = memDb();
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_OAUTH2', teamName: 'Beta', botToken: 'xoxb-decryptme', installedBy: 'U_ADMIN' });
+  const ws = getWorkspace(db, 'T_OAUTH2');
+  assert.strictEqual(ws.bot_token, 'xoxb-decryptme');
+  db.close();
+});
+
+test('upsertWorkspaceFromOAuth — re-install updates bot_token and sets active=1', () => {
+  const db = memDb();
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_REINSTALL', teamName: 'Gamma', botToken: 'xoxb-old', installedBy: 'U_ADMIN' });
+  db.prepare('UPDATE workspaces SET active = 0 WHERE team_id = ?').run('T_REINSTALL');
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_REINSTALL', teamName: 'Gamma Renamed', botToken: 'xoxb-new', installedBy: 'U_ADMIN2' });
+  const ws = getWorkspace(db, 'T_REINSTALL');
+  assert.strictEqual(ws.bot_token, 'xoxb-new');
+  assert.strictEqual(ws.active, 1);
+  assert.strictEqual(ws.team_name, 'Gamma Renamed');
+  db.close();
+});
+
+test('listActiveWorkspaces returns only active rows with decrypted tokens', () => {
+  const db = memDb();
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_ACTIVE', teamName: 'Active', botToken: 'xoxb-active', installedBy: 'U1' });
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_INACTIVE', teamName: 'Inactive', botToken: 'xoxb-inactive', installedBy: 'U2' });
+  db.prepare('UPDATE workspaces SET active = 0 WHERE team_id = ?').run('T_INACTIVE');
+  const workspaces = listActiveWorkspaces(db);
+  assert.strictEqual(workspaces.length, 1);
+  assert.strictEqual(workspaces[0].team_id, 'T_ACTIVE');
+  assert.strictEqual(workspaces[0].bot_token, 'xoxb-active');
+  db.close();
+});
+
+test('listActiveWorkspaces returns empty array when no active workspaces', () => {
+  const db = memDb();
+  const workspaces = listActiveWorkspaces(db);
+  assert.deepStrictEqual(workspaces, []);
+  db.close();
+});
