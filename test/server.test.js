@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { scheduleStringToCron } = require('../src/server.js');
+const { scheduleStringToCron } = require('../src/scheduler-registry.js');
 
 test('scheduleStringToCron converts sunday HH:MM to cron', () => {
   assert.strictEqual(scheduleStringToCron('sunday 18:00'), '0 18 * * 0');

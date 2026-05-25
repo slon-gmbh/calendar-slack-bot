@@ -6,38 +6,7 @@ const { openDb } = require('./db.js');
 const { runScheduledDigests, runChangeDetection } = require('./runner.js');
 const { validateEncryptionKey } = require('./crypto.js');
 const { validateSlackEnvVars, handleOAuthRequest } = require('./oauth.js');
-
-const DAY_MAP = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-
-/**
- * Convert a config schedule string to a node-cron expression.
- * Accepts 'day HH:MM', 'weekdays HH:MM', 'weekends HH:MM', 'daily HH:MM',
- * or a raw 5-field cron expression (passed through unchanged).
- * @param {string} str - Schedule string from config
- * @returns {string} node-cron expression
- * @example scheduleStringToCron('sunday 18:00') // '0 18 * * 0'
- * @example scheduleStringToCron('weekdays 08:00') // '0 8 * * 1-5'
- * @example scheduleStringToCron('0 18 * * 0') // '0 18 * * 0'
- */
-function scheduleStringToCron(str) {
-  if (/^\d+\s+\d+\s+[\d*]+\s+[\d*]+\s+[\d*,\-\/]+$/.test(str.trim())) {
-    return str.trim();
-  }
-
-  const match = str.trim().match(/^(sunday|monday|tuesday|wednesday|thursday|friday|saturday|weekdays|weekends|daily)\s+(\d{1,2}):(\d{2})$/i);
-  if (!match) throw new Error(`Unrecognised schedule string: "${str}"`);
-
-  const [, day, hours, minutes] = match;
-  const h = parseInt(hours, 10);
-  const m = parseInt(minutes, 10);
-  const keyword = day.toLowerCase();
-
-  if (keyword === 'weekdays') return `${m} ${h} * * 1-5`;
-  if (keyword === 'weekends') return `${m} ${h} * * 0,6`;
-  if (keyword === 'daily') return `${m} ${h} * * *`;
-
-  return `${m} ${h} * * ${DAY_MAP[keyword]}`;
-}
+const { scheduleStringToCron } = require('./scheduler-registry.js');
 
 async function start() {
   validateEncryptionKey();
@@ -140,4 +109,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { scheduleStringToCron };
+module.exports = {};
