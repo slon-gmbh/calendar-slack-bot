@@ -194,3 +194,58 @@ test('GET /slack/install/success returns 200 HTML page', async () => {
   assert.ok(res._body.includes('Installation complete'));
   db.close();
 });
+
+test('GET /slack/oauth/callback success — fires onInstall with teamId', async () => {
+  const db = openDb(':memory:');
+  _setClientForTest({
+    oauth: {
+      v2: {
+        access: async () => ({
+          access_token: 'xoxb-cb-test',
+          team: { id: 'T_INSTALL_CB', name: 'CB Corp' },
+          authed_user: { id: 'U_ADMIN' }
+        })
+      }
+    }
+  });
+  try {
+    let calledWith = null;
+    const onInstall = async (teamId) => { calledWith = teamId; };
+    const installRes = mockRes();
+    await handleOAuthRequest(db, mockReq('GET', '/slack/install'), installRes);
+    const state = new URL(installRes._headers['Location']).searchParams.get('state');
+    const callbackRes = mockRes();
+    await handleOAuthRequest(db, mockReq('GET', `/slack/oauth/callback?code=ok&state=${state}`), callbackRes, onInstall);
+    assert.strictEqual(callbackRes._statusCode, 302);
+    assert.strictEqual(calledWith, 'T_INSTALL_CB');
+  } finally {
+    _setClientForTest(null);
+    db.close();
+  }
+});
+
+test('GET /slack/oauth/callback — onInstall omitted — still redirects (backward compat)', async () => {
+  const db = openDb(':memory:');
+  _setClientForTest({
+    oauth: {
+      v2: {
+        access: async () => ({
+          access_token: 'xoxb-compat',
+          team: { id: 'T_COMPAT', name: 'Compat' },
+          authed_user: { id: 'U1' }
+        })
+      }
+    }
+  });
+  try {
+    const installRes = mockRes();
+    await handleOAuthRequest(db, mockReq('GET', '/slack/install'), installRes);
+    const state = new URL(installRes._headers['Location']).searchParams.get('state');
+    const callbackRes = mockRes();
+    await handleOAuthRequest(db, mockReq('GET', `/slack/oauth/callback?code=ok&state=${state}`), callbackRes);
+    assert.strictEqual(callbackRes._statusCode, 302);
+  } finally {
+    _setClientForTest(null);
+    db.close();
+  }
+});

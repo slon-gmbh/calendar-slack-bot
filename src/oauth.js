@@ -83,9 +83,10 @@ function sendError(res, message) {
  * @param {import('better-sqlite3').Database} db
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
+ * @param {(teamId: string) => Promise<void>} [onInstall] - optional callback fired after successful OAuth
  * @returns {Promise<boolean>}
  */
-async function handleOAuthRequest(db, req, res) {
+async function handleOAuthRequest(db, req, res, onInstall) {
   if (req.method !== 'GET') return false;
 
   const url = new URL(req.url, 'http://localhost');
@@ -134,7 +135,7 @@ async function handleOAuthRequest(db, req, res) {
         installedBy: result.authed_user.id
       });
 
-      // TODO #48: DM authed_user.id to trigger onboarding wizard
+      if (onInstall) await onInstall(result.team.id);
 
       res.writeHead(302, { Location: '/slack/install/success' });
       res.end();
