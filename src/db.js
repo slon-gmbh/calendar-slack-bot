@@ -357,6 +357,16 @@ function listActiveWorkspaces(db) {
   });
 }
 
+/**
+ * Mark a workspace as inactive (e.g. after app_uninstalled event).
+ * No-op if team_id does not exist.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} teamId
+ */
+function markWorkspaceInactive(db, teamId) {
+  db.prepare('UPDATE workspaces SET active = 0 WHERE team_id = ?').run(teamId);
+}
+
 module.exports = {
   openDb,
   loadEvents,
@@ -372,5 +382,6 @@ module.exports = {
   upsertCaldavCredentials,
   getCaldavCredentials,
   upsertWorkspaceFromOAuth,
-  listActiveWorkspaces
+  listActiveWorkspaces,
+  markWorkspaceInactive
 };

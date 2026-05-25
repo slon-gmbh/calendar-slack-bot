@@ -245,7 +245,7 @@ test('upsertCaldavCredentials is idempotent — updates on conflict', () => {
   db.close();
 });
 
-const { upsertWorkspaceFromOAuth, listActiveWorkspaces } = require('../src/db.js');
+const { upsertWorkspaceFromOAuth, listActiveWorkspaces, markWorkspaceInactive } = require('../src/db.js');
 
 test('upsertWorkspaceFromOAuth stores workspace with encrypted bot_token', () => {
   const db = memDb();
@@ -293,5 +293,31 @@ test('listActiveWorkspaces returns empty array when no active workspaces', () =>
   const db = memDb();
   const workspaces = listActiveWorkspaces(db);
   assert.deepStrictEqual(workspaces, []);
+  db.close();
+});
+
+test('markWorkspaceInactive sets active = 0 for the given team_id', () => {
+  const db = memDb();
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_INACT', teamName: 'Bye', botToken: 'xoxb-bye', installedBy: 'U1' });
+  markWorkspaceInactive(db, 'T_INACT');
+  const raw = db.prepare('SELECT active FROM workspaces WHERE team_id = ?').get('T_INACT');
+  assert.strictEqual(raw.active, 0);
+  db.close();
+});
+
+test('markWorkspaceInactive — no-op for unknown team_id (no error)', () => {
+  const db = memDb();
+  assert.doesNotThrow(() => markWorkspaceInactive(db, 'T_GHOST'));
+  db.close();
+});
+
+test('listActiveWorkspaces excludes workspace marked inactive via markWorkspaceInactive', () => {
+  const db = memDb();
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_STAYS', teamName: 'Active', botToken: 'xoxb-a', installedBy: 'U1' });
+  upsertWorkspaceFromOAuth(db, { teamId: 'T_GONE',  teamName: 'Gone',   botToken: 'xoxb-b', installedBy: 'U2' });
+  markWorkspaceInactive(db, 'T_GONE');
+  const rows = listActiveWorkspaces(db);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].team_id, 'T_STAYS');
   db.close();
 });
