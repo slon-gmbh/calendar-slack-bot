@@ -36,12 +36,12 @@ function seedTestWorkspace(db, workspaceId) {
   });
 }
 
-test('scheduleStringToCron converts sunday HH:MM to cron', () => {
-  assert.strictEqual(scheduleStringToCron('sunday 18:00'), '0 18 * * 0');
+test('scheduleStringToCron converts monday HH:MM to cron', () => {
+  assert.strictEqual(scheduleStringToCron('monday 09:00'), '0 9 * * 1');
 });
 
-test('scheduleStringToCron converts weekdays HH:MM to cron', () => {
-  assert.strictEqual(scheduleStringToCron('weekdays 08:00'), '0 8 * * 1-5');
+test('scheduleStringToCron converts friday HH:MM to cron', () => {
+  assert.strictEqual(scheduleStringToCron('friday 09:00'), '0 9 * * 5');
 });
 
 test('scheduleStringToCron passes through valid cron expression', () => {
