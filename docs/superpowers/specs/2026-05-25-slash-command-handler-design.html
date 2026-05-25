@@ -1,0 +1,728 @@
+<!-- issue: 26 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slack Slash Command Handler — Design Spec</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #1a1a2e;
+      background: #f8f9fc;
+      display: flex;
+    }
+
+    /* ── TOC ────────────────────────────────────────────────────── */
+    nav#toc {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      width: 220px;
+      min-width: 220px;
+      overflow-y: auto;
+      background: #1a1a2e;
+      color: #c8d0e7;
+      padding: 24px 0 24px 0;
+      font-size: 13px;
+    }
+    nav#toc h2 {
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #6b7a99;
+      padding: 0 16px 12px;
+      border-bottom: 1px solid #2d3455;
+      margin-bottom: 8px;
+    }
+    nav#toc a {
+      display: block;
+      padding: 5px 16px;
+      color: #c8d0e7;
+      text-decoration: none;
+      border-left: 3px solid transparent;
+      transition: background .15s, border-color .15s;
+    }
+    nav#toc a:hover { background: #242847; border-left-color: #5b73e8; color: #fff; }
+    nav#toc a.sub { padding-left: 28px; font-size: 12px; color: #8895b3; }
+
+    /* ── MAIN ───────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      max-width: 860px;
+      padding: 40px 48px 80px;
+      min-width: 0;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: #6b7a99;
+      margin-bottom: 6px;
+    }
+    h1 { font-size: 28px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
+    .subtitle { color: #4a5568; margin-bottom: 32px; font-size: 15px; }
+
+    h2 {
+      font-size: 19px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin: 40px 0 14px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    h3 { font-size: 15px; font-weight: 600; color: #2d3748; margin: 24px 0 8px; }
+
+    p { margin-bottom: 12px; }
+    ul, ol { margin: 0 0 12px 22px; }
+    li { margin-bottom: 4px; }
+
+    /* ── BADGES ─────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .badge-new    { background: #d1fae5; color: #065f46; }
+    .badge-mod    { background: #dbeafe; color: #1e40af; }
+    .badge-locked { background: #fef3c7; color: #92400e; }
+    .badge-issue  { background: #ede9fe; color: #5b21b6; }
+    .badge-p1     { background: #fee2e2; color: #991b1b; }
+
+    /* ── CALLOUT ─────────────────────────────────────────────────── */
+    aside.callout {
+      border-left: 4px solid #5b73e8;
+      background: #eef2ff;
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    aside.callout.warn {
+      border-left-color: #f59e0b;
+      background: #fffbeb;
+    }
+    aside.callout strong { color: #1e40af; }
+    aside.callout.warn strong { color: #92400e; }
+
+    /* ── CODE ────────────────────────────────────────────────────── */
+    pre {
+      background: #1e2235;
+      color: #cdd6f4;
+      padding: 16px 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.55;
+      margin: 12px 0 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
+    p code, li code, td code {
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ── TABLE ───────────────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 13.5px;
+    }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #1a1a2e;
+      color: #c8d0e7;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .05em;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #f0f4ff; }
+    tr:hover td { background: #e8edff; }
+
+    /* ── DETAILS ─────────────────────────────────────────────────── */
+    details {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      margin: 12px 0;
+      background: #fff;
+    }
+    summary {
+      padding: 10px 14px;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+      color: #2d3748;
+      list-style: none;
+    }
+    summary::before { content: '▶  '; font-size: 10px; color: #5b73e8; }
+    details[open] summary::before { content: '▼  '; }
+    details > *:not(summary) { padding: 0 16px 14px; }
+
+    /* ── DECISION TABLE ──────────────────────────────────────────── */
+    .decision-table th:first-child { width: 38%; }
+
+    /* ── FILE CARDS ──────────────────────────────────────────────── */
+    .file-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 10px 0;
+      background: #fff;
+    }
+    .file-card .path {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+    .file-card p { margin: 0; font-size: 13.5px; color: #4a5568; }
+
+    /* ── SVG DIAGRAM ─────────────────────────────────────────────── */
+    .diagram-wrap {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+      overflow-x: auto;
+    }
+
+    /* ── SECTION ANCHOR OFFSET ───────────────────────────────────── */
+    [id] { scroll-margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+<!-- ── TOC ──────────────────────────────────────────────────────── -->
+<nav id="toc">
+  <h2>Contents</h2>
+  <a href="#overview">Overview</a>
+  <a href="#decisions">Locked Decisions</a>
+  <a href="#architecture">Architecture</a>
+  <a class="sub" href="#arch-new">New Files</a>
+  <a class="sub" href="#arch-modified">Modified Files</a>
+  <a href="#flow">Request Flow</a>
+  <a href="#subcommands">Subcommands</a>
+  <a class="sub" href="#cmd-help">help</a>
+  <a class="sub" href="#cmd-config">config</a>
+  <a class="sub" href="#cmd-status">status</a>
+  <a class="sub" href="#cmd-refresh">refresh</a>
+  <a href="#errors">Error Handling</a>
+  <a href="#env">Environment</a>
+  <a href="#testing">Testing</a>
+  <a href="#ac">Acceptance Criteria</a>
+</nav>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────── -->
+<main>
+
+  <p class="meta">
+    <span class="badge badge-issue">#26</span>&nbsp;
+    calendar-slack-bot · v2 branch · 2026-05-25
+  </p>
+  <h1>Slack Slash Command Handler</h1>
+  <p class="subtitle">
+    <code>POST /slack/commands</code> — receive and dispatch <code>/calendar</code> subcommands
+    with HMAC verification, per-workspace DB lookups, and Block Kit responses.
+  </p>
+
+  <!-- ── OVERVIEW ─────────────────────────────────────────────── -->
+  <h2 id="overview">Overview</h2>
+  <p>
+    This feature adds a <code>POST /slack/commands</code> HTTP endpoint to the multi-tenant
+    Fly.io server. It handles the <code>/calendar</code> slash command that Slack delivers to
+    registered apps, routing four subcommands (<code>help</code>, <code>config</code>,
+    <code>status</code>, <code>refresh</code>) to per-workspace handlers.
+  </p>
+  <p>
+    As a by-product, the HMAC-SHA256 verification logic that currently lives inline in
+    <code>src/events.js</code> is extracted into a shared <code>src/slack-verify.js</code>
+    module so both endpoints use the same tested code path.
+  </p>
+  <aside class="callout">
+    <strong>Scope boundary:</strong> This spec covers request verification, routing, and
+    read-only responses only. Mutating workspace config (editing schedules, adding calendars)
+    is out of scope — that belongs to issue #29 (edit channel settings modal).
+  </aside>
+
+  <!-- ── LOCKED DECISIONS ─────────────────────────────────────── -->
+  <h2 id="decisions">Locked Decisions</h2>
+  <table class="decision-table">
+    <thead>
+      <tr><th>Decision</th><th>Choice</th><th>Rationale</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>HMAC verification ownership</td>
+        <td><span class="badge badge-locked">Shared module</span> <code>src/slack-verify.js</code></td>
+        <td>Two endpoints need it; extract once, test once.</td>
+      </tr>
+      <tr>
+        <td>Command handler location</td>
+        <td><span class="badge badge-locked">New file</span> <code>src/commands.js</code></td>
+        <td>Keeps <code>server.js</code> as a thin router; logic isolated and testable.</td>
+      </tr>
+      <tr>
+        <td>Response visibility</td>
+        <td><span class="badge badge-locked">Ephemeral</span> (caller only)</td>
+        <td>Config/status output is noisy in public channels.</td>
+      </tr>
+      <tr>
+        <td>Refresh execution model</td>
+        <td><span class="badge badge-locked">Async with response_url callback</span></td>
+        <td>Slack requires a response within 3 s; change detection can take longer.</td>
+      </tr>
+      <tr>
+        <td>Refresh authorisation</td>
+        <td><span class="badge badge-locked">Any workspace member</span></td>
+        <td>Refresh is read-only in effect. Admin check deferred until write commands exist.</td>
+      </tr>
+      <tr>
+        <td>Signing secret</td>
+        <td><span class="badge badge-locked">Shared</span> <code>SLACK_SIGNING_SECRET</code></td>
+        <td>Same env var used by <code>events.js</code>; no new var needed.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── ARCHITECTURE ─────────────────────────────────────────── -->
+  <h2 id="architecture">Architecture</h2>
+
+  <h3 id="arch-new">New Files</h3>
+
+  <div class="file-card">
+    <div class="path">src/slack-verify.js <span class="badge badge-new">new</span></div>
+    <p>
+      Pure verification utilities. Exports two functions:
+      <code>verifySlackRequest(rawBody, timestamp, signature, secret)</code> — synchronous,
+      returns boolean; and <code>readAndVerify(req, secret)</code> — async, reads the raw
+      request body, checks the timestamp window, verifies the HMAC, and returns
+      <code>{ rawBody, parsedBody }</code> (where <code>parsedBody</code> is the
+      URL-decoded object). Throws <code>{ statusCode: 403 }</code> on failure so callers
+      can send the right HTTP response without coupling verification to HTTP.
+    </p>
+  </div>
+
+  <div class="file-card">
+    <div class="path">src/commands.js <span class="badge badge-new">new</span></div>
+    <p>
+      Slash command handler. Exports <code>handleSlashCommand(db, req, res)</code> (returns
+      <code>Promise&lt;boolean&gt;</code> — true if handled, false otherwise) and
+      <code>validateSlackCommandsEnvVars()</code> (throws if <code>SLACK_SIGNING_SECRET</code>
+      is missing). Handles routing, DB lookup, subcommand dispatch, and Block Kit response
+      construction.
+    </p>
+  </div>
+
+  <h3 id="arch-modified">Modified Files</h3>
+
+  <div class="file-card">
+    <div class="path">src/events.js <span class="badge badge-mod">modified</span></div>
+    <p>
+      Remove the inline body-reading and HMAC block (~30 lines). Replace with a call to
+      <code>readAndVerify(req, process.env.SLACK_SIGNING_SECRET)</code> from
+      <code>slack-verify.js</code>. All existing tests must remain green.
+    </p>
+  </div>
+
+  <div class="file-card">
+    <div class="path">src/server.js <span class="badge badge-mod">modified</span></div>
+    <p>
+      Import <code>validateSlackCommandsEnvVars</code> and <code>handleSlashCommand</code>
+      from <code>commands.js</code>. Call <code>validateSlackCommandsEnvVars()</code> at
+      startup (alongside the existing validators). Add
+      <code>else if (await handleSlashCommand(db, req, res))</code> to the route chain
+      between <code>handleEventsRequest</code> and the 404 fallback.
+    </p>
+  </div>
+
+  <!-- ── REQUEST FLOW ──────────────────────────────────────────── -->
+  <h2 id="flow">Request Flow</h2>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 720 380" width="100%" xmlns="http://www.w3.org/2000/svg"
+         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#5b73e8"/>
+        </marker>
+        <marker id="arr-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#ef4444"/>
+        </marker>
+        <marker id="arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#10b981"/>
+        </marker>
+      </defs>
+
+      <!-- boxes -->
+      <!-- POST /slack/commands -->
+      <rect x="10" y="20" width="150" height="36" rx="6" fill="#1a1a2e" stroke="none"/>
+      <text x="85" y="43" text-anchor="middle" fill="#fff" font-weight="600">POST /slack/commands</text>
+
+      <!-- server.js -->
+      <rect x="220" y="20" width="120" height="36" rx="6" fill="#3730a3" stroke="none"/>
+      <text x="280" y="43" text-anchor="middle" fill="#fff" font-weight="600">server.js</text>
+
+      <!-- handleSlashCommand -->
+      <rect x="220" y="100" width="160" height="36" rx="6" fill="#3730a3" stroke="none"/>
+      <text x="300" y="123" text-anchor="middle" fill="#fff" font-weight="600">handleSlashCommand</text>
+
+      <!-- readAndVerify -->
+      <rect x="440" y="100" width="140" height="36" rx="6" fill="#1e40af" stroke="none"/>
+      <text x="510" y="118" text-anchor="middle" fill="#fff" font-weight="600">readAndVerify</text>
+      <text x="510" y="130" text-anchor="middle" fill="#93c5fd" font-size="11">(slack-verify.js)</text>
+
+      <!-- 403 -->
+      <rect x="620" y="100" width="80" height="36" rx="6" fill="#991b1b" stroke="none"/>
+      <text x="660" y="123" text-anchor="middle" fill="#fff" font-weight="600">403</text>
+
+      <!-- DB lookup -->
+      <rect x="440" y="180" width="140" height="36" rx="6" fill="#065f46" stroke="none"/>
+      <text x="510" y="198" text-anchor="middle" fill="#fff" font-weight="600">getWorkspace(db,</text>
+      <text x="510" y="210" text-anchor="middle" fill="#fff" font-weight="600">team_id)</text>
+
+      <!-- Subcommand router -->
+      <rect x="220" y="260" width="160" height="36" rx="6" fill="#5b21b6" stroke="none"/>
+      <text x="300" y="278" text-anchor="middle" fill="#fff" font-weight="600">Subcommand router</text>
+      <text x="300" y="290" text-anchor="middle" fill="#c4b5fd" font-size="11">help / config / status / refresh</text>
+
+      <!-- response_url -->
+      <rect x="440" y="260" width="140" height="36" rx="6" fill="#92400e" stroke="none"/>
+      <text x="510" y="278" text-anchor="middle" fill="#fff" font-weight="600">200 + Block Kit</text>
+      <text x="510" y="290" text-anchor="middle" fill="#fcd34d" font-size="11">ephemeral</text>
+
+      <!-- refresh async -->
+      <rect x="220" y="340" width="160" height="32" rx="6" fill="#1a1a2e" stroke="#5b73e8" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="300" y="361" text-anchor="middle" fill="#93c5fd" font-size="11">async: runChangeDetection</text>
+
+      <!-- arrows -->
+      <!-- POST -> server -->
+      <line x1="161" y1="38" x2="218" y2="38" stroke="#5b73e8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- server -> handleSlashCommand -->
+      <line x1="280" y1="56" x2="300" y2="98" stroke="#5b73e8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- handleSlashCommand -> readAndVerify -->
+      <line x1="381" y1="118" x2="438" y2="118" stroke="#5b73e8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- readAndVerify -> 403 (fail) -->
+      <line x1="581" y1="118" x2="618" y2="118" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arr-red)"/>
+      <text x="596" y="113" text-anchor="middle" fill="#ef4444" font-size="10">fail</text>
+
+      <!-- readAndVerify -> DB lookup (pass) -->
+      <line x1="510" y1="136" x2="510" y2="178" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr-green)"/>
+      <text x="524" y="162" fill="#10b981" font-size="10">pass</text>
+
+      <!-- DB lookup -> subcommand router -->
+      <line x1="440" y1="196" x2="381" y2="263" stroke="#5b73e8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- subcommand router -> 200 -->
+      <line x1="381" y1="278" x2="438" y2="278" stroke="#5b73e8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- subcommand router -> refresh async (dashed) -->
+      <line x1="300" y1="296" x2="300" y2="338" stroke="#5b73e8" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+      <text x="310" y="325" fill="#93c5fd" font-size="10">refresh only</text>
+    </svg>
+  </div>
+
+  <details>
+    <summary>Step-by-step flow description</summary>
+    <ol>
+      <li><strong>Receive</strong> — <code>POST /slack/commands</code> arrives at <code>server.js</code>.</li>
+      <li><strong>Route</strong> — <code>handleSlashCommand(db, req, res)</code> is called; returns <code>false</code> for any non-<code>POST /slack/commands</code> request.</li>
+      <li><strong>Verify</strong> — <code>readAndVerify(req, secret)</code> reads the raw body, checks <code>x-slack-request-timestamp</code> is within 300 s, and verifies the <code>x-slack-signature</code> HMAC. Sends 403 and returns on failure.</li>
+      <li><strong>Parse</strong> — body decoded as <code>application/x-www-form-urlencoded</code>: extract <code>team_id</code>, <code>channel_id</code>, <code>user_id</code>, <code>command</code>, <code>text</code>, <code>response_url</code>.</li>
+      <li><strong>Workspace lookup</strong> — <code>getWorkspace(db, team_id)</code>. If not found: 200 ephemeral "Workspace not configured yet."</li>
+      <li><strong>Route subcommand</strong> — first whitespace-delimited token of <code>text</code>. Unknown token: 200 ephemeral "Unknown command. Try <code>/calendar help</code>."</li>
+      <li><strong>Respond</strong> — 200 with <code>application/json</code> Block Kit payload (<code>response_type: "ephemeral"</code>). For <code>refresh</code>: send ack immediately, run detection asynchronously, POST result to <code>response_url</code>.</li>
+    </ol>
+  </details>
+
+  <!-- ── SUBCOMMANDS ───────────────────────────────────────────── -->
+  <h2 id="subcommands">Subcommands</h2>
+
+  <aside class="callout">
+    All responses use <code>response_type: "ephemeral"</code>. Responses are visible only
+    to the user who ran the command.
+  </aside>
+
+  <h3 id="cmd-help"><code>/calendar help</code></h3>
+  <p>Returns a single <code>section</code> block with a fixed listing of available commands.</p>
+  <pre>
+{
+  "response_type": "ephemeral",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Available commands:*\n`/calendar help` — show this help\n`/calendar config` — show channel calendar setup\n`/calendar status` — show last digest run times\n`/calendar refresh` — run calendar change detection now"
+      }
+    }
+  ]
+}</pre>
+
+  <h3 id="cmd-config"><code>/calendar config</code></h3>
+  <p>
+    Calls <code>loadConfigFromDb(db, teamId)</code>. For each channel in the workspace config,
+    renders a <code>section</code> block showing:
+  </p>
+  <ul>
+    <li>Channel name (or ID if name absent)</li>
+    <li>Digest schedule (<code>digest_schedule</code> field, or "disabled")</li>
+    <li>Daily digest schedule (<code>daily_digest_schedule</code> field, or "disabled")</li>
+    <li>Linked calendar names (from the <code>calendars</code> array)</li>
+  </ul>
+  <p>If no channels are configured, or <code>loadConfigFromDb</code> throws: 200 ephemeral "No calendars configured for this workspace."</p>
+
+  <details>
+    <summary>Example Block Kit payload</summary>
+    <pre>
+{
+  "response_type": "ephemeral",
+  "blocks": [
+    {
+      "type": "header",
+      "text": { "type": "plain_text", "text": "Calendar Config — My Workspace" }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*#general*\nDigest: `monday 09:00`\nDaily: disabled\nCalendars: Team Calendar, Holidays"
+      }
+    },
+    { "type": "divider" },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*#events*\nDigest: `friday 08:00`\nDaily: `08:00`\nCalendars: Public Events"
+      }
+    }
+  ]
+}</pre>
+  </details>
+
+  <h3 id="cmd-status"><code>/calendar status</code></h3>
+  <p>
+    Calls <code>loadRunState(db, workspaceId, channelId, digestType)</code> for each channel
+    × type (<code>'weekly'</code>, <code>'daily'</code>). Returns a section per channel showing
+    last run timestamps (ISO string, or "never" if null).
+  </p>
+
+  <details>
+    <summary>Example Block Kit payload</summary>
+    <pre>
+{
+  "response_type": "ephemeral",
+  "blocks": [
+    {
+      "type": "header",
+      "text": { "type": "plain_text", "text": "Bot Status — My Workspace" }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*#general*\nLast weekly digest: `2026-05-25T09:00:00.000Z`\nLast daily digest: never"
+      }
+    }
+  ]
+}</pre>
+  </details>
+
+  <h3 id="cmd-refresh"><code>/calendar refresh</code></h3>
+  <p>Two-phase response to stay within Slack's 3-second window:</p>
+  <ol>
+    <li>
+      <strong>Immediate 200 ack</strong> — body:
+      <code>{"response_type":"ephemeral","text":"Refreshing calendars…"}</code>
+    </li>
+    <li>
+      <strong>Async detection</strong> — calls <code>runChangeDetection(db, teamId, false)</code>
+      in the background. On completion, POSTs to <code>response_url</code>:
+      <ul>
+        <li>Success: <code>{"response_type":"ephemeral","text":"Change detection complete."}</code></li>
+        <li>Error: <code>{"response_type":"ephemeral","text":"Change detection failed: &lt;message&gt;"}</code></li>
+      </ul>
+    </li>
+  </ol>
+  <p>
+    The <code>response_url</code> POST uses Node's built-in <code>node:https</code> module
+    (no additional dependencies). The async block is fire-and-forget from the HTTP handler's
+    perspective — errors in the async block are caught and logged, never bubble to the
+    request handler.
+  </p>
+
+  <!-- ── ERROR HANDLING ────────────────────────────────────────── -->
+  <h2 id="errors">Error Handling</h2>
+  <table>
+    <thead>
+      <tr><th>Condition</th><th>Response</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Non-<code>POST</code> method or path ≠ <code>/slack/commands</code></td>
+        <td><code>return false</code></td>
+        <td>Not handled; server.js falls through to next handler.</td>
+      </tr>
+      <tr>
+        <td>Stale timestamp (&gt; 300 s)</td>
+        <td>403 (empty body)</td>
+        <td>Replay-attack prevention.</td>
+      </tr>
+      <tr>
+        <td>Bad or missing <code>x-slack-signature</code></td>
+        <td>403 (empty body)</td>
+        <td>HMAC mismatch.</td>
+      </tr>
+      <tr>
+        <td>Workspace not found in DB</td>
+        <td>200 ephemeral — "Workspace not configured yet."</td>
+        <td>Workspace may have uninstalled after the command was typed.</td>
+      </tr>
+      <tr>
+        <td>Unknown subcommand</td>
+        <td>200 ephemeral — "Unknown command. Try <code>/calendar help</code>."</td>
+        <td>Catches empty text and unrecognised tokens.</td>
+      </tr>
+      <tr>
+        <td><code>loadConfigFromDb</code> throws</td>
+        <td>200 ephemeral — "Could not load workspace config."</td>
+        <td>Logged to console; error not surfaced to user verbatim.</td>
+      </tr>
+      <tr>
+        <td><code>runChangeDetection</code> throws (refresh)</td>
+        <td>POST to <code>response_url</code>: "Change detection failed: &lt;message&gt;"</td>
+        <td>Error message is safe to surface — it comes from our own runner.</td>
+      </tr>
+      <tr>
+        <td>POST to <code>response_url</code> fails</td>
+        <td>Logged, silently dropped</td>
+        <td><code>response_url</code> is only valid for 30 min. Log at <code>warn</code> level.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── ENVIRONMENT ───────────────────────────────────────────── -->
+  <h2 id="env">Environment Variables</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Required by</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>SLACK_SIGNING_SECRET</code></td>
+        <td><code>events.js</code>, <code>commands.js</code></td>
+        <td>Already required. <code>validateSlackCommandsEnvVars()</code> checks the same var — no new var introduced.</td>
+      </tr>
+    </tbody>
+  </table>
+  <aside class="callout warn">
+    <strong>No new env vars.</strong> Both <code>events.js</code> and <code>commands.js</code>
+    use <code>SLACK_SIGNING_SECRET</code>. Validation is intentionally split per module so
+    startup failures identify which module requires the missing var.
+  </aside>
+
+  <!-- ── TESTING ───────────────────────────────────────────────── -->
+  <h2 id="testing">Testing</h2>
+  <p>Framework: <code>node:test</code> + <code>node:assert</code>. Run with <code>NODE_ENV=test node --test test/*.test.js</code>.</p>
+
+  <h3>test/slack-verify.test.js <span class="badge badge-new">new</span></h3>
+  <ul>
+    <li>Valid signature and fresh timestamp → returns <code>{ rawBody, parsedBody }</code></li>
+    <li>Stale timestamp (&gt; 300 s) → throws <code>{ statusCode: 403 }</code></li>
+    <li>Wrong signature → throws <code>{ statusCode: 403 }</code></li>
+    <li>Missing <code>x-slack-request-timestamp</code> header → throws <code>{ statusCode: 403 }</code></li>
+    <li><code>verifySlackRequest</code> (pure): valid returns <code>true</code>, tampered body returns <code>false</code></li>
+  </ul>
+
+  <h3>test/commands.test.js <span class="badge badge-new">new</span></h3>
+  <ul>
+    <li>Bad signature → 403</li>
+    <li>Workspace not found → 200 ephemeral with "not configured" text</li>
+    <li><code>/calendar help</code> → 200, payload contains all four command names</li>
+    <li><code>/calendar config</code> → 200, payload contains channel name and schedule fields</li>
+    <li><code>/calendar status</code> → 200, payload contains "Last weekly digest" text</li>
+    <li><code>/calendar refresh</code> → immediate 200 ack with "Refreshing" text</li>
+    <li><code>/calendar refresh</code> → calls <code>runChangeDetection</code> asynchronously</li>
+    <li>Unknown subcommand (<code>foobar</code>) → 200 with "Unknown command" text</li>
+    <li>Empty text → 200 with "Unknown command" text</li>
+    <li>Non-POST → returns <code>false</code></li>
+  </ul>
+
+  <h3>test/events.test.js <span class="badge badge-mod">modified</span></h3>
+  <p>Existing 10 tests must remain green after <code>events.js</code> is refactored to use <code>slack-verify.js</code>. No new tests required — the shared verification is covered by <code>slack-verify.test.js</code>.</p>
+
+  <!-- ── ACCEPTANCE CRITERIA ──────────────────────────────────── -->
+  <h2 id="ac">Acceptance Criteria</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Criterion</th><th>How to verify</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>AC-1</td>
+        <td>Invalid signatures rejected with 403</td>
+        <td>Unit test: bad signature case in <code>commands.test.js</code></td>
+      </tr>
+      <tr>
+        <td>AC-2</td>
+        <td>Stale timestamps rejected with 403</td>
+        <td>Unit test: stale timestamp case in <code>slack-verify.test.js</code></td>
+      </tr>
+      <tr>
+        <td>AC-3</td>
+        <td><code>/calendar help</code> responds with all four commands listed</td>
+        <td>Unit test: help payload contains all four command names</td>
+      </tr>
+      <tr>
+        <td>AC-4</td>
+        <td>Unknown subcommands respond with a helpful error referencing <code>/calendar help</code></td>
+        <td>Unit test: unknown + empty text cases</td>
+      </tr>
+      <tr>
+        <td>AC-5</td>
+        <td><code>/calendar config</code> shows channel digest schedules and linked calendars</td>
+        <td>Unit test with seeded workspace; assert payload fields</td>
+      </tr>
+      <tr>
+        <td>AC-6</td>
+        <td><code>/calendar status</code> shows last run timestamps per channel</td>
+        <td>Unit test with seeded run state; assert payload fields</td>
+      </tr>
+      <tr>
+        <td>AC-7</td>
+        <td><code>/calendar refresh</code> responds within 3 s and runs change detection async</td>
+        <td>Unit test: immediate ack returned; <code>runChangeDetection</code> spy called</td>
+      </tr>
+      <tr>
+        <td>AC-8</td>
+        <td>All existing <code>events.test.js</code> tests still pass after refactor</td>
+        <td><code>NODE_ENV=test node --test test/events.test.js</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+</main>
+</body>
+</html>
