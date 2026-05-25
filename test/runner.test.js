@@ -41,3 +41,25 @@ test('loadRunState returns null for unknown channel', () => {
   assert.strictEqual(loadRunState(db, 'T_TEST', 'C999', 'daily'), null);
   db.close();
 });
+
+const { runScheduledDigests, runChangeDetection } = require('../src/runner.js');
+
+process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0'.repeat(64);
+
+test('runScheduledDigests(db, workspaceId, dryRun) — throws if workspace not found', async () => {
+  const db = openDb(':memory:');
+  await assert.rejects(
+    () => runScheduledDigests(db, 'T_UNKNOWN', false),
+    /Workspace not found: T_UNKNOWN/
+  );
+  db.close();
+});
+
+test('runChangeDetection(db, workspaceId, dryRun) — throws if workspace not found', async () => {
+  const db = openDb(':memory:');
+  await assert.rejects(
+    () => runChangeDetection(db, 'T_UNKNOWN', false),
+    /Workspace not found: T_UNKNOWN/
+  );
+  db.close();
+});

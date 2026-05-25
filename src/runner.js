@@ -5,6 +5,7 @@ const { diffEvents, loadPendingNotifications, savePendingNotifications } = requi
 const { scheduleMatchesCron, shouldNotifyNow, hasRunToday, hasRunThisWeek } = require('./scheduler.js');
 const { loadCacheState, saveCacheState } = require('./cache.js');
 const { loadRunState, saveRunState } = require('./db.js');
+const { loadConfigFromDb } = require('./config.js');
 
 /**
  * Build cache map for color resolution — calendarId → full cache object
@@ -47,12 +48,13 @@ function shouldPostErrorNotification(calendarId, errorMessage, cachedData) {
 
 /**
  * Run change detection polling
- * @param {Object} config
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {boolean} dryRun
  * @returns {Promise<void>}
  */
-async function runChangeDetection(config, db, dryRun) {
+async function runChangeDetection(db, workspaceId, dryRun) {
+  const config = loadConfigFromDb(db, workspaceId);
   console.log('Running change detection...');
   const dateRange = getChangeDetectionRange();
   console.log(`Checking calendars for changes (${dateRange.start.toISOString()} to ${dateRange.end.toISOString()})`);
@@ -181,12 +183,13 @@ async function bundleAndPostChangeDetections(config, channelDiffsMap, cacheMap, 
 
 /**
  * Run scheduled digest checks for all channels
- * @param {Object} config
  * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
  * @param {boolean} dryRun
  * @returns {Promise<void>}
  */
-async function runScheduledDigests(config, db, dryRun) {
+async function runScheduledDigests(db, workspaceId, dryRun) {
+  const config = loadConfigFromDb(db, workspaceId);
   const now = new Date();
   const firedCron = process.env.SCHEDULED_CRON;
   if (!firedCron) console.warn('SCHEDULED_CRON env var not set — running all pending digests');
