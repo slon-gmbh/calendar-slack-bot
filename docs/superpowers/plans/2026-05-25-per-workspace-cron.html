@@ -1,0 +1,795 @@
+<!-- issue: 47 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Per-Workspace Cron — Implementation Plan</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1e293b;
+    --surface2: #0d1627;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --faint: #64748b;
+    --purple: #a78bfa;
+    --blue: #7dd3fc;
+    --green: #34d399;
+    --yellow: #fcd34d;
+    --red: #f87171;
+    --indigo: #818cf8;
+    --code-bg: #0d1627;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; display: flex; }
+
+  nav#toc {
+    position: sticky; top: 0; height: 100vh; width: 230px; flex-shrink: 0;
+    background: #090d14; border-right: 1px solid var(--border);
+    padding: 24px 16px; overflow-y: auto; font-size: 12px;
+  }
+  nav#toc .toc-title { color: var(--purple); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px; font-weight: 700; }
+  nav#toc a { display: block; color: var(--muted); text-decoration: none; padding: 3px 8px; border-radius: 4px; margin-bottom: 2px; }
+  nav#toc a:hover { color: var(--text); background: var(--surface); }
+  nav#toc a.l2 { padding-left: 20px; font-size: 11px; color: var(--faint); }
+  nav#toc a.l2:hover { color: var(--muted); }
+  nav#toc hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+  main { flex: 1; padding: 40px 48px; max-width: 960px; overflow-x: hidden; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; color: var(--purple); margin-top: 48px; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: .95rem; color: var(--blue); margin-top: 24px; margin-bottom: 10px; }
+  p { margin-bottom: 12px; color: var(--muted); }
+  p strong { color: var(--text); }
+
+  .meta { display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
+  .meta-item { font-size: 11px; color: var(--faint); }
+  .meta-item span { color: var(--muted); }
+
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: .04em; }
+  .badge-todo     { background: #1c2333; color: #64748b; }
+  .badge-doing    { background: #1c3a5f; color: #93c5fd; }
+  .badge-done     { background: #065f46; color: #6ee7b7; }
+  .badge-p0       { background: #7f1d1d; color: #fca5a5; }
+  .badge-new      { background: #065f46; color: #6ee7b7; }
+  .badge-mod      { background: #1e3a5f; color: #93c5fd; }
+  .badge-dep      { background: #312e81; color: #c4b5fd; }
+
+  /* Progress summary */
+  .progress-bar-outer { background: var(--surface); border-radius: 4px; height: 6px; margin-bottom: 24px; overflow: hidden; }
+  .progress-bar-inner { background: var(--purple); height: 100%; width: 0%; transition: width .4s; border-radius: 4px; }
+  .progress-label { font-size: 11px; color: var(--faint); margin-bottom: 8px; }
+
+  /* Task cards */
+  .task-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 24px; overflow: hidden;
+  }
+  .task-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  .task-header:hover { background: #253347; }
+  .task-number { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; min-width: 48px; }
+  .task-title { flex: 1; font-weight: 600; font-size: .9rem; color: var(--text); }
+  .task-files { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 18px; background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .file-chip { font-family: 'Courier New', monospace; font-size: 10px; padding: 2px 7px; border-radius: 3px; display: flex; align-items: center; gap: 4px; }
+  .file-chip.new { background: #052e1c; color: #6ee7b7; border: 1px solid #065f46; }
+  .file-chip.mod { background: #1e3a5f; color: #93c5fd; border: 1px solid #1e40af; }
+  .task-body { padding: 18px; }
+
+  /* Step list */
+  .step-list { list-style: none; }
+  .step-list li { margin-bottom: 14px; }
+  .step-check { display: flex; gap: 10px; align-items: flex-start; }
+  .step-check input[type=checkbox] { margin-top: 3px; flex-shrink: 0; cursor: pointer; accent-color: var(--purple); }
+  .step-label { font-size: .85rem; color: var(--text); font-weight: 600; }
+
+  details.step-detail { margin-top: 8px; margin-left: 24px; }
+  details.step-detail summary {
+    color: var(--faint); font-size: 11px; cursor: pointer; list-style: none;
+    padding: 4px 8px; border-radius: 4px; background: var(--surface2);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  details.step-detail summary::before { content: '▶ '; font-size: 8px; }
+  details[open].step-detail summary::before { content: '▼ '; }
+  details.step-detail summary:hover { color: var(--muted); }
+  .step-detail-body { padding: 12px; margin-top: 4px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; }
+
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; overflow-x: auto; margin: 10px 0 14px; font-size: 11px; line-height: 1.6; }
+  pre code { font-family: 'Courier New', monospace; color: #cbd5e1; }
+  .kw { color: #818cf8; }
+  .fn { color: #7dd3fc; }
+  .str { color: #34d399; }
+  .cmt { color: #475569; font-style: italic; }
+  .num { color: #fcd34d; }
+
+  code { font-family: 'Courier New', monospace; font-size: 11px; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; color: var(--blue); }
+
+  /* Dep graph */
+  .dep-graph { margin: 24px 0; }
+  .dep-graph svg text { font-family: system-ui, sans-serif; }
+
+  /* Callout */
+  aside.callout { border-left: 3px solid var(--purple); background: #1a1040; padding: 12px 16px; margin: 16px 0; border-radius: 0 6px 6px 0; font-size: 12px; }
+  aside.callout.green { border-color: var(--green); background: #052e1c; }
+  aside.callout .callout-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--purple); margin-bottom: 4px; }
+  aside.callout.green .callout-label { color: var(--green); }
+  aside.callout p { margin: 0; color: var(--muted); }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<nav id="toc">
+  <div class="toc-title">Plan Navigator</div>
+  <a href="#overview">Overview</a>
+  <a href="#dep-graph">Dependency Graph</a>
+  <hr>
+  <a href="#task1">Task 1</a>
+  <a class="l2" href="#task1">db.js — markWorkspaceInactive</a>
+  <a href="#task2">Task 2</a>
+  <a class="l2" href="#task2">runner.js — signature update</a>
+  <a href="#task3">Task 3</a>
+  <a class="l2" href="#task3">oauth.js — onInstall callback</a>
+  <a href="#task4">Task 4</a>
+  <a class="l2" href="#task4">scheduler-registry.js (new)</a>
+  <a href="#task5">Task 5</a>
+  <a class="l2" href="#task5">events.js (new)</a>
+  <a href="#task6">Task 6</a>
+  <a class="l2" href="#task6">server.js — wire everything</a>
+</nav>
+
+<main>
+
+  <h1>Per-Workspace Cron Scheduling</h1>
+  <div class="meta">
+    <div class="meta-item">Issue <span>#47</span></div>
+    <div class="meta-item">Branch <span>v2</span></div>
+    <div class="meta-item">Date <span>2026-05-25</span></div>
+    <div class="meta-item">Priority <span class="badge badge-p0">P0</span></div>
+    <div class="meta-item">Size <span>M</span></div>
+    <div class="meta-item">Tasks <span>6</span></div>
+  </div>
+
+  <div class="progress-label">0 of 6 tasks complete</div>
+  <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:0%"></div></div>
+
+  <h2 id="overview">Overview</h2>
+  <p><strong>Goal:</strong> Replace the single-workspace hardcoded cron setup in <code>server.js</code> with a multi-tenant scheduler that loads all active workspaces from SQLite at startup and dynamically adds/removes jobs when workspaces install or uninstall via Slack OAuth.</p>
+
+  <aside class="callout">
+    <div class="callout-label">Load-bearing boundary</div>
+    <p><code>oauth.js</code> and <code>events.js</code> know nothing about scheduling. They fire callbacks (<code>onInstall</code>, <code>onUninstall</code>) that <code>server.js</code> wires to the registry. All scheduling logic lives in <code>scheduler-registry.js</code> and is testable in isolation.</p>
+  </aside>
+
+  <h2 id="dep-graph">Dependency Graph</h2>
+
+  <div class="dep-graph">
+    <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:760px;background:#0d1627;border:1px solid #334155;border-radius:8px;padding:16px">
+      <!-- Task boxes -->
+      <!-- T1: db.js -->
+      <rect x="20" y="40" width="160" height="48" rx="6" fill="#1e293b" stroke="#334155"/>
+      <text x="100" y="60" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">TASK 1</text>
+      <text x="100" y="77" text-anchor="middle" fill="#7dd3fc" font-size="11">db.js</text>
+      <!-- T2: runner.js -->
+      <rect x="300" y="40" width="160" height="48" rx="6" fill="#1e293b" stroke="#334155"/>
+      <text x="380" y="60" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">TASK 2</text>
+      <text x="380" y="77" text-anchor="middle" fill="#7dd3fc" font-size="11">runner.js</text>
+      <!-- T3: oauth.js -->
+      <rect x="580" y="40" width="160" height="48" rx="6" fill="#1e293b" stroke="#334155"/>
+      <text x="660" y="60" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">TASK 3</text>
+      <text x="660" y="77" text-anchor="middle" fill="#7dd3fc" font-size="11">oauth.js</text>
+      <!-- T4: scheduler-registry -->
+      <rect x="300" y="160" width="160" height="48" rx="6" fill="#1a1040" stroke="#6d28d9"/>
+      <text x="380" y="180" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">TASK 4</text>
+      <text x="380" y="197" text-anchor="middle" fill="#a78bfa" font-size="11">scheduler-registry.js</text>
+      <!-- T5: events.js -->
+      <rect x="20" y="160" width="160" height="48" rx="6" fill="#052e1c" stroke="#065f46"/>
+      <text x="100" y="180" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">TASK 5</text>
+      <text x="100" y="197" text-anchor="middle" fill="#34d399" font-size="11">events.js</text>
+      <!-- T6: server.js -->
+      <rect x="300" y="280" width="160" height="48" rx="6" fill="#1c1400" stroke="#854d0e"/>
+      <text x="380" y="300" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">TASK 6</text>
+      <text x="380" y="317" text-anchor="middle" fill="#fcd34d" font-size="11">server.js (orchestrator)</text>
+
+      <!-- Arrows: T1 → T5 -->
+      <line x1="100" y1="88" x2="100" y2="160" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <!-- Arrows: T2 → T4 -->
+      <line x1="380" y1="88" x2="380" y2="160" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <!-- Arrows: T3 → T6 -->
+      <line x1="660" y1="88" x2="660" y2="200" stroke="#334155" stroke-width="1.5"/>
+      <line x1="660" y1="200" x2="460" y2="284" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <!-- Arrows: T4 → T6 -->
+      <line x1="380" y1="208" x2="380" y2="280" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <!-- Arrows: T5 → T6 -->
+      <line x1="100" y1="208" x2="100" y2="240" stroke="#334155" stroke-width="1.5"/>
+      <line x1="100" y1="240" x2="300" y2="290" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#334155"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- TASK 1 -->
+  <h2 id="task1">Task 1 — db.js: add <code>markWorkspaceInactive</code></h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-number">01 / 06</span>
+      <span class="task-title">db.js — <code>markWorkspaceInactive(db, teamId)</code></span>
+      <span class="badge badge-todo">todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip mod">modify: src/db.js</span>
+      <span class="file-chip mod">modify: test/db.test.js</span>
+    </div>
+    <div class="task-body">
+      <p>Add <code>markWorkspaceInactive</code> to <code>src/db.js</code>. Called by <code>events.js</code> when Slack sends <code>app_uninstalled</code>. Sets <code>active = 0</code> for the given <code>team_id</code>. Idempotent for unknown IDs (SQLite UPDATE is a no-op when no rows match).</p>
+      <ul class="step-list">
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t1s1">
+            <label for="t1s1" class="step-label">1.1 — Add 3 failing tests to <code>test/db.test.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show tests</summary>
+            <div class="step-detail-body">
+<pre><code><span class="kw">const</span> { upsertWorkspaceFromOAuth, listActiveWorkspaces, <span class="fn">markWorkspaceInactive</span> } = <span class="fn">require</span>(<span class="str">'../src/db.js'</span>);
+
+<span class="fn">test</span>(<span class="str">'markWorkspaceInactive sets active = 0'</span>, () => {
+  <span class="kw">const</span> db = <span class="fn">memDb</span>();
+  <span class="fn">upsertWorkspaceFromOAuth</span>(db, { teamId: <span class="str">'T_INACT'</span>, teamName: <span class="str">'Bye'</span>, botToken: <span class="str">'xoxb-x'</span>, installedBy: <span class="str">'U1'</span> });
+  <span class="fn">markWorkspaceInactive</span>(db, <span class="str">'T_INACT'</span>);
+  <span class="kw">const</span> raw = db.<span class="fn">prepare</span>(<span class="str">'SELECT active FROM workspaces WHERE team_id = ?'</span>).<span class="fn">get</span>(<span class="str">'T_INACT'</span>);
+  assert.<span class="fn">strictEqual</span>(raw.active, <span class="num">0</span>);
+  db.<span class="fn">close</span>();
+});
+
+<span class="fn">test</span>(<span class="str">'markWorkspaceInactive — no-op for unknown team_id'</span>, () => {
+  <span class="kw">const</span> db = <span class="fn">memDb</span>();
+  assert.<span class="fn">doesNotThrow</span>(() => <span class="fn">markWorkspaceInactive</span>(db, <span class="str">'T_GHOST'</span>));
+  db.<span class="fn">close</span>();
+});
+
+<span class="fn">test</span>(<span class="str">'listActiveWorkspaces excludes workspace marked inactive'</span>, () => {
+  <span class="kw">const</span> db = <span class="fn">memDb</span>();
+  <span class="fn">upsertWorkspaceFromOAuth</span>(db, { teamId: <span class="str">'T_STAYS'</span>, teamName: <span class="str">'Active'</span>, botToken: <span class="str">'xoxb-a'</span>, installedBy: <span class="str">'U1'</span> });
+  <span class="fn">upsertWorkspaceFromOAuth</span>(db, { teamId: <span class="str">'T_GONE'</span>,  teamName: <span class="str">'Gone'</span>,   botToken: <span class="str">'xoxb-b'</span>, installedBy: <span class="str">'U2'</span> });
+  <span class="fn">markWorkspaceInactive</span>(db, <span class="str">'T_GONE'</span>);
+  <span class="kw">const</span> rows = <span class="fn">listActiveWorkspaces</span>(db);
+  assert.<span class="fn">strictEqual</span>(rows.length, <span class="num">1</span>);
+  assert.<span class="fn">strictEqual</span>(rows[<span class="num">0</span>].team_id, <span class="str">'T_STAYS'</span>);
+  db.<span class="fn">close</span>();
+});</code></pre>
+            </div>
+          </details>
+        </li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t1s2">
+            <label for="t1s2" class="step-label">1.2 — Verify tests fail</label>
+          </div>
+          <details class="step-detail">
+            <summary>Run command</summary>
+            <div class="step-detail-body">
+              <code>NODE_ENV=test node --test test/db.test.js 2>&amp;1 | tail -10</code>
+              <p style="margin-top:8px;font-size:11px;">Expected: <em>TypeError: markWorkspaceInactive is not a function</em></p>
+            </div>
+          </details>
+        </li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t1s3">
+            <label for="t1s3" class="step-label">1.3 — Add <code>markWorkspaceInactive</code> to <code>src/db.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show implementation</summary>
+            <div class="step-detail-body">
+<pre><code><span class="kw">function</span> <span class="fn">markWorkspaceInactive</span>(db, teamId) {
+  db.<span class="fn">prepare</span>(<span class="str">'UPDATE workspaces SET active = 0 WHERE team_id = ?'</span>).<span class="fn">run</span>(teamId);
+}</code></pre>
+              <p style="font-size:11px;margin-top:8px;">Add after <code>listActiveWorkspaces</code>, add to <code>module.exports</code>.</p>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t1s4"><label for="t1s4" class="step-label">1.4 — Run tests: expect <code># fail 0</code></label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t1s5"><label for="t1s5" class="step-label">1.5 — Commit: <em>"feat: add markWorkspaceInactive to db.js  refs: #47"</em></label></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- TASK 2 -->
+  <h2 id="task2">Task 2 — runner.js: update exported function signatures</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-number">02 / 06</span>
+      <span class="task-title">runner.js — <code>(config, db, dryRun)</code> → <code>(db, workspaceId, dryRun)</code></span>
+      <span class="badge badge-todo">todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip mod">modify: src/runner.js</span>
+      <span class="file-chip mod">modify: test/runner.test.js</span>
+    </div>
+    <div class="task-body">
+      <p>Both <code>runScheduledDigests</code> and <code>runChangeDetection</code> gain <code>const config = loadConfigFromDb(db, workspaceId)</code> at the top. All internal code referencing <code>config</code> continues to work unchanged.</p>
+      <ul class="step-list">
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t2s1">
+            <label for="t2s1" class="step-label">2.1 — Add 2 failing tests to <code>test/runner.test.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show tests</summary>
+            <div class="step-detail-body">
+<pre><code><span class="kw">const</span> { runScheduledDigests, runChangeDetection } = <span class="fn">require</span>(<span class="str">'../src/runner.js'</span>);
+process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || <span class="str">'0'</span>.<span class="fn">repeat</span>(<span class="num">64</span>);
+
+<span class="fn">test</span>(<span class="str">'runScheduledDigests throws if workspace not found'</span>, <span class="kw">async</span> () => {
+  <span class="kw">const</span> db = <span class="fn">openDb</span>(<span class="str">':memory:'</span>);
+  <span class="kw">await</span> assert.<span class="fn">rejects</span>(
+    () => <span class="fn">runScheduledDigests</span>(db, <span class="str">'T_UNKNOWN'</span>, <span class="kw">false</span>),
+    <span class="str">/Workspace not found: T_UNKNOWN/</span>
+  );
+  db.<span class="fn">close</span>();
+});
+
+<span class="fn">test</span>(<span class="str">'runChangeDetection throws if workspace not found'</span>, <span class="kw">async</span> () => {
+  <span class="kw">const</span> db = <span class="fn">openDb</span>(<span class="str">':memory:'</span>);
+  <span class="kw">await</span> assert.<span class="fn">rejects</span>(
+    () => <span class="fn">runChangeDetection</span>(db, <span class="str">'T_UNKNOWN'</span>, <span class="kw">false</span>),
+    <span class="str">/Workspace not found: T_UNKNOWN/</span>
+  );
+  db.<span class="fn">close</span>();
+});</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t2s2"><label for="t2s2" class="step-label">2.2 — Verify tests fail</label></div></li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t2s3">
+            <label for="t2s3" class="step-label">2.3 — Add <code>loadConfigFromDb</code> import to <code>src/runner.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show change</summary>
+            <div class="step-detail-body">
+              <p>Add after existing imports:</p>
+              <pre><code><span class="kw">const</span> { <span class="fn">loadConfigFromDb</span> } = <span class="fn">require</span>(<span class="str">'./config.js'</span>);</code></pre>
+            </div>
+          </details>
+        </li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t2s4">
+            <label for="t2s4" class="step-label">2.4 — Update <code>runChangeDetection</code> signature</label>
+          </div>
+          <details class="step-detail">
+            <summary>Show diff</summary>
+            <div class="step-detail-body">
+<pre><code><span class="cmt">// Before:</span>
+<span class="kw">async function</span> <span class="fn">runChangeDetection</span>(config, db, dryRun) {
+  <span class="fn">console</span>.log(<span class="str">'Running change detection...'</span>);
+
+<span class="cmt">// After:</span>
+<span class="kw">async function</span> <span class="fn">runChangeDetection</span>(db, workspaceId, dryRun) {
+  <span class="kw">const</span> config = <span class="fn">loadConfigFromDb</span>(db, workspaceId);
+  <span class="fn">console</span>.log(<span class="str">'Running change detection...'</span>);</code></pre>
+            </div>
+          </details>
+        </li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t2s5">
+            <label for="t2s5" class="step-label">2.5 — Update <code>runScheduledDigests</code> signature</label>
+          </div>
+          <details class="step-detail">
+            <summary>Show diff</summary>
+            <div class="step-detail-body">
+<pre><code><span class="cmt">// Before:</span>
+<span class="kw">async function</span> <span class="fn">runScheduledDigests</span>(config, db, dryRun) {
+  <span class="kw">const</span> now = <span class="kw">new</span> <span class="fn">Date</span>();
+
+<span class="cmt">// After:</span>
+<span class="kw">async function</span> <span class="fn">runScheduledDigests</span>(db, workspaceId, dryRun) {
+  <span class="kw">const</span> config = <span class="fn">loadConfigFromDb</span>(db, workspaceId);
+  <span class="kw">const</span> now = <span class="kw">new</span> <span class="fn">Date</span>();</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t2s6"><label for="t2s6" class="step-label">2.6 — Run full suite: <code># fail 0</code> on both runner and all tests</label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t2s7"><label for="t2s7" class="step-label">2.7 — Commit: <em>"feat: update runner.js signatures to (db, workspaceId, dryRun)  refs: #47"</em></label></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- TASK 3 -->
+  <h2 id="task3">Task 3 — oauth.js: add optional <code>onInstall</code> callback</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-number">03 / 06</span>
+      <span class="task-title">oauth.js — <code>handleOAuthRequest(db, req, res, onInstall?)</code></span>
+      <span class="badge badge-todo">todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip mod">modify: src/oauth.js</span>
+      <span class="file-chip mod">modify: test/oauth.test.js</span>
+    </div>
+    <div class="task-body">
+      <p>Small, isolated change. The fourth argument <code>onInstall</code> is optional — existing callers without it continue to work. Replaces the <code>// TODO #48</code> comment.</p>
+      <ul class="step-list">
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t3s1">
+            <label for="t3s1" class="step-label">3.1 — Add 2 failing tests to <code>test/oauth.test.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show tests</summary>
+            <div class="step-detail-body">
+<pre><code><span class="fn">test</span>(<span class="str">'callback success — fires onInstall with teamId'</span>, <span class="kw">async</span> () => {
+  <span class="kw">const</span> db = <span class="fn">openDb</span>(<span class="str">':memory:'</span>);
+  <span class="fn">_setClientForTest</span>({
+    oauth: { v2: { access: <span class="kw">async</span> () => ({
+      access_token: <span class="str">'xoxb-cb'</span>,
+      team: { id: <span class="str">'T_CB'</span>, name: <span class="str">'CB Corp'</span> },
+      authed_user: { id: <span class="str">'U1'</span> }
+    }) } }
+  });
+  <span class="kw">try</span> {
+    <span class="kw">let</span> calledWith = <span class="kw">null</span>;
+    <span class="kw">const</span> installRes = <span class="fn">mockRes</span>();
+    <span class="kw">await</span> <span class="fn">handleOAuthRequest</span>(db, <span class="fn">mockReq</span>(<span class="str">'GET'</span>, <span class="str">'/slack/install'</span>), installRes);
+    <span class="kw">const</span> state = <span class="kw">new</span> <span class="fn">URL</span>(installRes._headers[<span class="str">'Location'</span>]).<span class="fn">searchParams</span>.<span class="fn">get</span>(<span class="str">'state'</span>);
+    <span class="kw">const</span> cbRes = <span class="fn">mockRes</span>();
+    <span class="kw">await</span> <span class="fn">handleOAuthRequest</span>(db, <span class="fn">mockReq</span>(<span class="str">'GET'</span>, <span class="str">`/slack/oauth/callback?code=ok&state=${state}`</span>), cbRes, <span class="kw">async</span> (id) => { calledWith = id; });
+    assert.<span class="fn">strictEqual</span>(cbRes._statusCode, <span class="num">302</span>);
+    assert.<span class="fn">strictEqual</span>(calledWith, <span class="str">'T_CB'</span>);
+  } <span class="kw">finally</span> { <span class="fn">_setClientForTest</span>(<span class="kw">null</span>); db.<span class="fn">close</span>(); }
+});</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t3s2"><label for="t3s2" class="step-label">3.2 — Verify tests fail (<code>calledWith</code> stays null)</label></div></li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t3s3">
+            <label for="t3s3" class="step-label">3.3 — Update <code>handleOAuthRequest</code> in <code>src/oauth.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show diff</summary>
+            <div class="step-detail-body">
+<pre><code><span class="cmt">// Signature change:</span>
+<span class="kw">async function</span> <span class="fn">handleOAuthRequest</span>(db, req, res, onInstall) {
+
+<span class="cmt">// After upsertWorkspaceFromOAuth, replace TODO comment:</span>
+<span class="fn">upsertWorkspaceFromOAuth</span>(db, { teamId: result.team.id, ... });
+<span class="kw">if</span> (onInstall) <span class="kw">await</span> <span class="fn">onInstall</span>(result.team.id);
+res.<span class="fn">writeHead</span>(<span class="num">302</span>, { Location: <span class="str">'/slack/install/success'</span> });
+res.<span class="fn">end</span>();</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t3s4"><label for="t3s4" class="step-label">3.4 — Run oauth tests: <code># fail 0</code></label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t3s5"><label for="t3s5" class="step-label">3.5 — Commit: <em>"feat: add optional onInstall callback to handleOAuthRequest  refs: #47"</em></label></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- TASK 4 -->
+  <h2 id="task4">Task 4 — scheduler-registry.js (new)</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-number">04 / 06</span>
+      <span class="task-title">scheduler-registry.js — multi-tenant cron registry</span>
+      <span class="badge badge-todo">todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip new">create: src/scheduler-registry.js</span>
+      <span class="file-chip new">create: test/scheduler-registry.test.js</span>
+      <span class="file-chip mod">modify: src/server.js (scheduleStringToCron relocation)</span>
+      <span class="file-chip mod">modify: test/server.test.js (update import)</span>
+    </div>
+    <div class="task-body">
+      <p>Creates the core multi-tenant scheduling module. Moves <code>scheduleStringToCron</code> here from <code>server.js</code>. Module-scope <code>Map</code> is the singleton. Tests stub node-cron via <code>_setCronForTest</code>.</p>
+      <aside class="callout green" style="margin-bottom:14px;">
+        <div class="callout-label">Depends on</div>
+        <p>Task 2 (runner.js updated signatures) must be complete before this task.</p>
+      </aside>
+      <ul class="step-list">
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t4s1">
+            <label for="t4s1" class="step-label">4.1 — Write failing tests: create <code>test/scheduler-registry.test.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show test file</summary>
+            <div class="step-detail-body">
+<pre><code>process.env.ENCRYPTION_KEY = <span class="str">'0'</span>.<span class="fn">repeat</span>(<span class="num">64</span>);
+
+<span class="kw">const</span> { test } = <span class="fn">require</span>(<span class="str">'node:test'</span>);
+<span class="kw">const</span> assert = <span class="fn">require</span>(<span class="str">'node:assert'</span>);
+<span class="kw">const</span> { openDb } = <span class="fn">require</span>(<span class="str">'../src/db.js'</span>);
+<span class="kw">const</span> { seedWorkspace } = <span class="fn">require</span>(<span class="str">'../src/config.js'</span>);
+<span class="kw">const</span> {
+  scheduleWorkspace, scheduleAllWorkspaces, unscheduleWorkspace,
+  stopAll, _setCronForTest, _jobCount, scheduleStringToCron
+} = <span class="fn">require</span>(<span class="str">'../src/scheduler-registry.js'</span>);
+
+<span class="kw">function</span> <span class="fn">makeMockCron</span>() {
+  <span class="kw">const</span> tasks = [];
+  <span class="kw">return</span> {
+    tasks,
+    <span class="fn">schedule</span>(expr, handler) {
+      <span class="kw">const</span> task = { expr, handler, stopped: <span class="kw">false</span>, <span class="fn">stop</span>() { <span class="kw">this</span>.stopped = <span class="kw">true</span>; } };
+      tasks.<span class="fn">push</span>(task);
+      <span class="kw">return</span> task;
+    }
+  };
+}
+
+<span class="kw">function</span> <span class="fn">seedTestWorkspace</span>(db, workspaceId) {
+  <span class="fn">seedWorkspace</span>(db, workspaceId, {
+    locale: <span class="str">'en-US'</span>,
+    caldav_credentials: { username: <span class="str">'u'</span>, password: <span class="str">'p'</span> },
+    calendars: { <span class="str">'cal-1'</span>: { name: <span class="str">'Cal'</span>, caldav_url: <span class="str">'http://example.com/cal.ics'</span> } },
+    channels: [{ id: <span class="str">'C_TEST'</span>, canvas_id: <span class="str">'F_TEST'</span>, calendars: [<span class="str">'cal-1'</span>],
+      digest_schedule: <span class="str">'monday 09:00'</span>, daily_digest_schedule: <span class="str">'daily 07:00'</span> }]
+  });
+}</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t4s2"><label for="t4s2" class="step-label">4.2 — Verify tests fail: <em>Cannot find module</em></label></div></li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t4s3">
+            <label for="t4s3" class="step-label">4.3 — Create <code>src/scheduler-registry.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Key API surface</summary>
+            <div class="step-detail-body">
+              <p>Exports: <code>scheduleStringToCron</code>, <code>scheduleWorkspace(db, workspaceId, dryRun)</code>, <code>scheduleAllWorkspaces(db, dryRun)</code>, <code>unscheduleWorkspace(workspaceId)</code>, <code>stopAll()</code>, <code>_setCronForTest(mock|null)</code>, <code>_jobCount()</code>.</p>
+              <p>Each cron handler wraps <code>runScheduledDigests</code>/<code>runChangeDetection</code> in <code>try/catch</code> — workspace A errors never affect workspace B.</p>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t4s4"><label for="t4s4" class="step-label">4.4 — Run registry tests: <code># fail 0</code></label></div></li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t4s5">
+            <label for="t4s5" class="step-label">4.5 — Update <code>test/server.test.js</code> import</label>
+          </div>
+          <details class="step-detail">
+            <summary>One-line change</summary>
+            <div class="step-detail-body">
+              <pre><code><span class="cmt">// Before:</span>
+<span class="kw">const</span> { scheduleStringToCron } = <span class="fn">require</span>(<span class="str">'../src/server.js'</span>);
+<span class="cmt">// After:</span>
+<span class="kw">const</span> { scheduleStringToCron } = <span class="fn">require</span>(<span class="str">'../src/scheduler-registry.js'</span>);</code></pre>
+            </div>
+          </details>
+        </li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t4s6">
+            <label for="t4s6" class="step-label">4.6 — Remove <code>scheduleStringToCron</code> from <code>src/server.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>What to remove / add</summary>
+            <div class="step-detail-body">
+              <p>Remove: <code>DAY_MAP</code> const, <code>scheduleStringToCron</code> function body.</p>
+              <p>Add import: <code>const { scheduleStringToCron } = require('./scheduler-registry.js');</code></p>
+              <p>Change: <code>module.exports = { scheduleStringToCron };</code> → <code>module.exports = {};</code></p>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t4s7"><label for="t4s7" class="step-label">4.7 — Run full suite: <code># fail 0</code></label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t4s8"><label for="t4s8" class="step-label">4.8 — Commit: <em>"feat: add scheduler-registry.js with multi-tenant cron registry  refs: #47"</em></label></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- TASK 5 -->
+  <h2 id="task5">Task 5 — events.js (new)</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-number">05 / 06</span>
+      <span class="task-title">events.js — Slack Events API with HMAC replay protection</span>
+      <span class="badge badge-todo">todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip new">create: src/events.js</span>
+      <span class="file-chip new">create: test/events.test.js</span>
+    </div>
+    <div class="task-body">
+      <p>Handles <code>POST /slack/events</code>. Verifies Slack HMAC-SHA256 signature + timestamp (&lt;5 min) before processing. Handles <code>url_verification</code> and <code>app_uninstalled</code>. Returns <code>false</code> for non-matching routes.</p>
+      <aside class="callout green" style="margin-bottom:14px;">
+        <div class="callout-label">Depends on</div>
+        <p>Task 1 (<code>markWorkspaceInactive</code>) must be complete.</p>
+      </aside>
+      <ul class="step-list">
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t5s1">
+            <label for="t5s1" class="step-label">5.1 — Create <code>test/events.test.js</code> with 9 failing tests</label>
+          </div>
+          <details class="step-detail">
+            <summary>Show helper setup</summary>
+            <div class="step-detail-body">
+<pre><code>process.env.SLACK_SIGNING_SECRET = <span class="str">'test-signing-secret'</span>;
+
+<span class="kw">function</span> <span class="fn">sign</span>(ts, body) {
+  <span class="kw">return</span> <span class="str">'v0='</span> + <span class="fn">createHmac</span>(<span class="str">'sha256'</span>, <span class="str">'test-signing-secret'</span>)
+    .<span class="fn">update</span>(<span class="str">`v0:${ts}:${body}`</span>).<span class="fn">digest</span>(<span class="str">'hex'</span>);
+}
+
+<span class="kw">function</span> <span class="fn">validReq</span>(body) {
+  <span class="kw">const</span> raw = JSON.<span class="fn">stringify</span>(body);
+  <span class="kw">const</span> ts = Math.<span class="fn">floor</span>(Date.now() / <span class="num">1000</span>).<span class="fn">toString</span>();
+  <span class="kw">return</span> <span class="fn">mockReq</span>(<span class="str">'POST'</span>, <span class="str">'/slack/events'</span>,
+    { <span class="str">'x-slack-request-timestamp'</span>: ts, <span class="str">'x-slack-signature'</span>: <span class="fn">sign</span>(ts, raw) }, raw);
+}</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t5s2"><label for="t5s2" class="step-label">5.2 — Verify tests fail: <em>Cannot find module</em></label></div></li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t5s3">
+            <label for="t5s3" class="step-label">5.3 — Create <code>src/events.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>HMAC verification pattern</summary>
+            <div class="step-detail-body">
+<pre><code><span class="kw">const</span> expected = <span class="str">'v0='</span> + <span class="fn">createHmac</span>(<span class="str">'sha256'</span>, process.env.SLACK_SIGNING_SECRET)
+  .<span class="fn">update</span>(<span class="str">`v0:${timestamp}:${rawBody}`</span>)
+  .<span class="fn">digest</span>(<span class="str">'hex'</span>);
+<span class="kw">if</span> (!provided || provided !== expected) {
+  res.<span class="fn">writeHead</span>(<span class="num">403</span>); res.<span class="fn">end</span>(); <span class="kw">return</span> <span class="kw">true</span>;
+}</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t5s4"><label for="t5s4" class="step-label">5.4 — Run events tests: <code># fail 0</code></label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t5s5"><label for="t5s5" class="step-label">5.5 — Run full suite: <code># fail 0</code></label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t5s6"><label for="t5s6" class="step-label">5.6 — Commit: <em>"feat: add events.js with Slack HMAC verification and app_uninstalled handler  refs: #47"</em></label></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- TASK 6 -->
+  <h2 id="task6">Task 6 — server.js: wire registry and events into the orchestrator</h2>
+  <div class="task-card">
+    <div class="task-header">
+      <span class="task-number">06 / 06</span>
+      <span class="task-title">server.js — becomes a pure orchestrator</span>
+      <span class="badge badge-todo">todo</span>
+    </div>
+    <div class="task-files">
+      <span class="file-chip mod">modify: src/server.js</span>
+    </div>
+    <div class="task-body">
+      <p>No new tests — server.js is the entry-point and tested indirectly. Removes <code>WORKSPACE_ID</code>, <code>loadConfigFromDb</code>, <code>jobs</code> array, and cron setup loop. Wires registry and events modules together.</p>
+      <aside class="callout green" style="margin-bottom:14px;">
+        <div class="callout-label">Depends on</div>
+        <p>Tasks 3 (oauth), 4 (registry), and 5 (events) must all be complete.</p>
+      </aside>
+      <ul class="step-list">
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t6s1">
+            <label for="t6s1" class="step-label">6.1 — Replace import block at top of <code>src/server.js</code></label>
+          </div>
+          <details class="step-detail">
+            <summary>Show new imports</summary>
+            <div class="step-detail-body">
+<pre><code><span class="kw">const</span> http = <span class="fn">require</span>(<span class="str">'node:http'</span>);
+<span class="kw">const</span> path = <span class="fn">require</span>(<span class="str">'node:path'</span>);
+<span class="kw">const</span> { <span class="fn">openDb</span> } = <span class="fn">require</span>(<span class="str">'./db.js'</span>);
+<span class="kw">const</span> { <span class="fn">validateEncryptionKey</span> } = <span class="fn">require</span>(<span class="str">'./crypto.js'</span>);
+<span class="kw">const</span> { <span class="fn">validateSlackEnvVars</span>, <span class="fn">handleOAuthRequest</span> } = <span class="fn">require</span>(<span class="str">'./oauth.js'</span>);
+<span class="kw">const</span> { <span class="fn">validateSlackEventsEnvVars</span>, <span class="fn">handleEventsRequest</span> } = <span class="fn">require</span>(<span class="str">'./events.js'</span>);
+<span class="kw">const</span> registry = <span class="fn">require</span>(<span class="str">'./scheduler-registry.js'</span>);</code></pre>
+              <p style="font-size:11px;margin-top:8px;">Remove: <code>node-cron</code>, <code>loadConfigFromDb</code>, <code>runScheduledDigests</code>, <code>runChangeDetection</code>, <code>scheduleStringToCron</code> imports.</p>
+            </div>
+          </details>
+        </li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t6s2">
+            <label for="t6s2" class="step-label">6.2 — Replace <code>start()</code> body</label>
+          </div>
+          <details class="step-detail">
+            <summary>Show new start() body</summary>
+            <div class="step-detail-body">
+<pre><code>  <span class="fn">validateEncryptionKey</span>();
+  <span class="fn">validateSlackEnvVars</span>();
+  <span class="fn">validateSlackEventsEnvVars</span>();
+
+  <span class="kw">const</span> dataDir = process.env.DATA_DIR;
+  <span class="kw">if</span> (!dataDir) <span class="kw">throw new</span> <span class="fn">Error</span>(<span class="str">'DATA_DIR environment variable not set'</span>);
+
+  <span class="kw">const</span> db = <span class="fn">openDb</span>(path.<span class="fn">join</span>(dataDir, <span class="str">'bot.db'</span>));
+  <span class="kw">const</span> dryRun = process.env.DRY_RUN === <span class="str">'true'</span>;
+
+  <span class="kw">await</span> registry.<span class="fn">scheduleAllWorkspaces</span>(db, dryRun);
+
+  <span class="kw">const</span> onInstall = <span class="kw">async</span> (workspaceId) => {
+    <span class="kw">await</span> registry.<span class="fn">scheduleWorkspace</span>(db, workspaceId, dryRun);
+  };
+  <span class="kw">const</span> onUninstall = (workspaceId) => {
+    registry.<span class="fn">unscheduleWorkspace</span>(workspaceId);
+  };
+
+  <span class="kw">const</span> port = parseInt(process.env.PORT || <span class="str">'8080'</span>, <span class="num">10</span>);
+  <span class="kw">const</span> httpServer = http.<span class="fn">createServer</span>(<span class="kw">async</span> (req, res) => {
+    <span class="kw">try</span> {
+      <span class="kw">if</span> (req.method === <span class="str">'GET'</span> && req.url === <span class="str">'/health'</span>) {
+        res.<span class="fn">writeHead</span>(<span class="num">200</span>, { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> });
+        res.<span class="fn">end</span>(JSON.<span class="fn">stringify</span>({ status: <span class="str">'ok'</span> }));
+      } <span class="kw">else if</span> (<span class="kw">await</span> <span class="fn">handleOAuthRequest</span>(db, req, res, onInstall)) {
+        <span class="cmt">// handled by oauth.js</span>
+      } <span class="kw">else if</span> (<span class="kw">await</span> <span class="fn">handleEventsRequest</span>(db, req, res, onUninstall)) {
+        <span class="cmt">// handled by events.js</span>
+      } <span class="kw">else</span> {
+        res.<span class="fn">writeHead</span>(<span class="num">404</span>); res.<span class="fn">end</span>();
+      }
+    } <span class="kw">catch</span> (err) {
+      console.<span class="fn">error</span>(<span class="str">'[http] Unhandled error:'</span>, err.message);
+      <span class="kw">if</span> (!res.headersSent) { res.<span class="fn">writeHead</span>(<span class="num">500</span>); res.<span class="fn">end</span>(); }
+    }
+  });
+  httpServer.<span class="fn">listen</span>(port, () => console.<span class="fn">log</span>(<span class="str">`HTTP server listening on port ${port}`</span>));
+
+  <span class="kw">function</span> <span class="fn">shutdown</span>() {
+    console.<span class="fn">log</span>(<span class="str">'Shutting down — stopping cron jobs'</span>);
+    registry.<span class="fn">stopAll</span>();
+    httpServer.<span class="fn">close</span>(() => { db.<span class="fn">close</span>(); process.<span class="fn">exit</span>(<span class="num">0</span>); });
+  }
+
+  process.<span class="fn">on</span>(<span class="str">'SIGTERM'</span>, shutdown);
+  process.<span class="fn">on</span>(<span class="str">'SIGINT'</span>, shutdown);
+  console.<span class="fn">log</span>(<span class="str">'Server started.'</span>);</code></pre>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t6s3"><label for="t6s3" class="step-label">6.3 — Set <code>module.exports = {};</code> at bottom of server.js</label></div></li>
+        <li><div class="step-check"><input type="checkbox" id="t6s4"><label for="t6s4" class="step-label">6.4 — Run full suite: <code># fail 0</code></label></div></li>
+        <li>
+          <div class="step-check">
+            <input type="checkbox" id="t6s5">
+            <label for="t6s5" class="step-label">6.5 — Smoke-test module loads without error</label>
+          </div>
+          <details class="step-detail">
+            <summary>Run command</summary>
+            <div class="step-detail-body">
+              <code>NODE_ENV=test node -e "require('./src/server.js')" 2>&amp;1</code>
+              <p style="font-size:11px;margin-top:8px;">Expected: no output, exit code 0.</p>
+            </div>
+          </details>
+        </li>
+        <li><div class="step-check"><input type="checkbox" id="t6s6"><label for="t6s6" class="step-label">6.6 — Commit: <em>"feat: wire scheduler-registry and events into server.js orchestrator  refs: #47"</em></label></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <hr>
+  <aside class="callout green">
+    <div class="callout-label">Acceptance Criteria — verified by tests</div>
+    <p>1. On startup, cron jobs registered for all active workspaces from SQLite<br>
+    2. New workspace install dynamically adds cron jobs (no restart)<br>
+    3. <code>app_uninstalled</code> stops their cron jobs and marks workspace inactive in DB<br>
+    4. Each workspace's jobs use their own config loaded from DB<br>
+    5. A crash in workspace A's cron handler never stops workspace B's jobs</p>
+  </aside>
+
+</main>
+</body>
+</html>
