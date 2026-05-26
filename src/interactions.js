@@ -94,6 +94,49 @@ async function handleConfigEditAction(db, workspace, action, triggerId, res) {
 }
 
 async function handleConfigEditSubmit(db, payload, onReschedule, res) {
+  let workspaceId, channelId;
+  try {
+    ({ workspaceId, channelId } = JSON.parse(payload.view.private_metadata));
+  } catch {
+    ackEmpty(res);
+    return;
+  }
+
+  const values = payload.view.state.values;
+  const digestSchedule = values.digest_schedule_block?.digest_schedule_input?.value?.trim() || '';
+  const dailySchedule  = values.daily_schedule_block?.daily_schedule_input?.value?.trim()  || '';
+
+  const errors = {};
+  if (digestSchedule) {
+    try { scheduleStringToCron(digestSchedule); } catch {
+      errors.digest_schedule_block = 'Invalid schedule format. Use e.g. "sunday 18:00" or leave blank to disable.';
+    }
+  }
+  if (dailySchedule) {
+    try { scheduleStringToCron(dailySchedule); } catch {
+      errors.daily_schedule_block = 'Invalid schedule format. Use e.g. "weekdays 09:00" or leave blank to disable.';
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    ackJson(res, { response_action: 'errors', errors });
+    return;
+  }
+
+  try {
+    updateChannelSchedule(db, workspaceId, channelId, digestSchedule || null, dailySchedule || null);
+  } catch (err) {
+    console.error('[interactions] DB update failed:', err.message);
+    ackEmpty(res);
+    return;
+  }
+
+  if (onReschedule) {
+    try { await onReschedule(workspaceId); } catch (err) {
+      console.error('[interactions] onReschedule failed:', err.message);
+    }
+  }
+
   ackEmpty(res);
 }
 
