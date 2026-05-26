@@ -1,0 +1,766 @@
+<!-- issue: 27 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slack Interactivity Handler — Design Spec</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222636;
+    --border: #2e3250;
+    --text: #e2e8f0;
+    --muted: #8892b0;
+    --accent: #7c6af7;
+    --accent-light: #a89cf7;
+    --green: #43d9ad;
+    --yellow: #ffd080;
+    --red: #ff6b6b;
+    --blue: #64b5f6;
+    --code-bg: #131625;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+  }
+  nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 28px 0;
+  }
+  nav h2 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--muted);
+    padding: 0 20px 12px;
+  }
+  nav a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 2px solid transparent;
+    transition: all .15s;
+  }
+  nav a:hover, nav a.active { color: var(--accent-light); border-left-color: var(--accent); }
+  main { padding: 48px 56px; max-width: 880px; }
+  h1 { font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+  .meta a { color: var(--accent-light); text-decoration: none; }
+  h2 { font-size: 19px; font-weight: 600; color: var(--text); margin: 48px 0 16px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; font-weight: 600; color: var(--accent-light); margin: 24px 0 10px; }
+  p { margin-bottom: 14px; color: var(--text); }
+  ul, ol { margin: 0 0 14px 20px; }
+  li { margin-bottom: 6px; }
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: .04em;
+    vertical-align: middle;
+  }
+  .badge-p1 { background: #2a2350; color: var(--accent-light); }
+  .badge-s  { background: #1a2e20; color: var(--green); }
+  .badge-new { background: #1a2e20; color: var(--green); }
+  .badge-mod { background: #2a2010; color: var(--yellow); }
+  .badge-done { background: #1a2e20; color: var(--green); }
+  aside {
+    background: var(--surface2);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin: 16px 0 24px;
+    font-size: 14px;
+  }
+  aside.warn { border-left-color: var(--yellow); }
+  aside strong { color: var(--accent-light); }
+  aside.warn strong { color: var(--yellow); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 13.5px; }
+  th { background: var(--surface2); color: var(--muted); font-weight: 600; text-align: left; padding: 10px 14px; border: 1px solid var(--border); }
+  td { padding: 9px 14px; border: 1px solid var(--border); vertical-align: top; }
+  td:first-child { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12.5px; color: var(--accent-light); }
+  tr:nth-child(even) td { background: var(--surface); }
+  details { margin: 12px 0 20px; }
+  summary {
+    cursor: pointer;
+    color: var(--accent-light);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-radius: var(--radius);
+    list-style: none;
+    user-select: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: '▶ '; font-size: 10px; }
+  details[open] summary::before { content: '▼ '; }
+  details[open] summary { border-radius: var(--radius) var(--radius) 0 0; }
+  details > div {
+    background: var(--surface2);
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 16px 18px;
+    font-size: 13.5px;
+  }
+  .file-grid { display: grid; gap: 10px; margin: 12px 0 24px; }
+  .file-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .file-card code { background: none; border: none; padding: 0; color: var(--accent-light); font-size: 13px; }
+  .file-card span { color: var(--muted); font-size: 13px; }
+  .flow-step {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .step-num {
+    min-width: 26px;
+    height: 26px;
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .step-body { flex: 1; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+</style>
+</head>
+<body>
+
+<nav>
+  <h2>Sections</h2>
+  <a href="#goal">Goal</a>
+  <a href="#decisions">Locked Decisions</a>
+  <a href="#files">File Structure</a>
+  <a href="#flow">Request Flow</a>
+  <a href="#interactions-js">interactions.js</a>
+  <a href="#modal">Modal Design</a>
+  <a href="#db">DB Change</a>
+  <a href="#commands-js">commands.js Change</a>
+  <a href="#server-js">server.js Change</a>
+  <a href="#errors">Error Handling</a>
+  <a href="#tests">Test Plan</a>
+</nav>
+
+<main>
+  <h1>Slack Interactivity Handler</h1>
+  <p class="meta">
+    Issue <a href="https://github.com/slon-gmbh/calendar-slack-bot/issues/27">#27</a> &nbsp;·&nbsp;
+    Branch: <code>v2</code> &nbsp;·&nbsp;
+    <span class="badge badge-p1">P1</span>
+    <span class="badge badge-s">Small</span>
+    &nbsp;·&nbsp; 2026-05-26
+  </p>
+
+  <!-- GOAL -->
+  <h2 id="goal">Goal</h2>
+  <p>
+    Add a <code>POST /slack/interactions</code> endpoint that receives Slack interactive component
+    payloads (button clicks, modal submissions), verifies the request signature, dispatches by
+    interaction type and action ID, and persists config changes to SQLite. The first concrete
+    action: an "Edit" button in <code>/calendar config</code> that opens a schedule-editing modal.
+  </p>
+
+  <!-- LOCKED DECISIONS -->
+  <h2 id="decisions">Locked Decisions</h2>
+  <aside>
+    <strong>Load-bearing choices — do not revisit during implementation.</strong>
+  </aside>
+  <table>
+    <tr><th>Decision</th><th>Rationale</th></tr>
+    <tr>
+      <td>Payload parsing via <code>URLSearchParams</code></td>
+      <td>Slack sends interactions as <code>application/x-www-form-urlencoded</code> with a single <code>payload</code> field containing JSON. <code>readAndVerify</code> already reads the raw body; caller does <code>JSON.parse(new URLSearchParams(rawBody).get('payload'))</code>.</td>
+    </tr>
+    <tr>
+      <td><code>new WebClient(botToken)</code> per request</td>
+      <td>Multi-tenant: each workspace has its own encrypted bot_token in SQLite. No global Slack client. WebClient is instantiated with the workspace token fetched from DB per request.</td>
+    </tr>
+    <tr>
+      <td><code>_setApiClientForTest(fn)</code> injection</td>
+      <td>Same pattern as <code>_setRunnerForTest</code> in <code>commands.js</code>. Keeps <code>@slack/web-api</code> out of test assertions while still verifying correct arguments.</td>
+    </tr>
+    <tr>
+      <td>Schedule editing only (not calendar assignment)</td>
+      <td>Stays within the Small size label. Calendar assignment (multi-select from available calendars) is a separate future concern.</td>
+    </tr>
+    <tr>
+      <td><code>onReschedule</code> callback from server.js</td>
+      <td>Keeps <code>interactions.js</code> decoupled from <code>scheduler-registry.js</code>. Mirrors <code>onInstall</code> in <code>oauth.js</code> and <code>onUninstall</code> in <code>events.js</code>.</td>
+    </tr>
+    <tr>
+      <td>Validate schedule via <code>scheduleStringToCron</code></td>
+      <td>Reuses existing validation logic. Returns Slack inline errors (<code>response_action: 'errors'</code>) rather than crashing.</td>
+    </tr>
+    <tr>
+      <td>Empty schedule input → <code>null</code> in DB</td>
+      <td><code>null</code> disables the schedule. Consistent with how the scheduler treats missing schedules (no cron job created).</td>
+    </tr>
+  </table>
+
+  <!-- FILE STRUCTURE -->
+  <h2 id="files">File Structure</h2>
+  <div class="file-grid">
+    <div class="file-card"><span class="badge badge-new">NEW</span><code>src/interactions.js</code><span>Interactions endpoint + dispatch + handlers</span></div>
+    <div class="file-card"><span class="badge badge-new">NEW</span><code>test/interactions.test.js</code><span>Full test coverage for interactions handler</span></div>
+    <div class="file-card"><span class="badge badge-mod">MOD</span><code>src/db.js</code><span>Add <code>updateChannelSchedule()</code></span></div>
+    <div class="file-card"><span class="badge badge-mod">MOD</span><code>src/commands.js</code><span>Add "Edit" button to <code>subConfig</code> channel blocks</span></div>
+    <div class="file-card"><span class="badge badge-mod">MOD</span><code>src/server.js</code><span>Wire startup validation + route + onReschedule callback</span></div>
+  </div>
+  <p>All other files (<code>slack-verify.js</code>, <code>scheduler-registry.js</code>, <code>config.js</code>) are consumed but not modified.</p>
+
+  <!-- REQUEST FLOW -->
+  <h2 id="flow">Request Flow</h2>
+
+  <!-- SVG diagram -->
+  <svg viewBox="0 0 760 420" width="100%" style="margin:16px 0 28px;display:block;">
+    <defs>
+      <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#7c6af7"/>
+      </marker>
+    </defs>
+    <!-- Lanes -->
+    <rect x="0" y="0" width="760" height="420" fill="#1a1d27" rx="8"/>
+    <text x="14" y="22" fill="#8892b0" font-size="11" font-weight="600" letter-spacing=".08em">SLACK</text>
+    <text x="210" y="22" fill="#8892b0" font-size="11" font-weight="600" letter-spacing=".08em">server.js</text>
+    <text x="340" y="22" fill="#8892b0" font-size="11" font-weight="600" letter-spacing=".08em">interactions.js</text>
+    <text x="540" y="22" fill="#8892b0" font-size="11" font-weight="600" letter-spacing=".08em">DB / Slack API</text>
+
+    <!-- POST /slack/interactions -->
+    <rect x="10" y="38" width="150" height="36" rx="6" fill="#222636" stroke="#7c6af7" stroke-width="1.5"/>
+    <text x="85" y="56" fill="#e2e8f0" font-size="12" text-anchor="middle">POST /slack/interactions</text>
+    <text x="85" y="69" fill="#a89cf7" font-size="10" text-anchor="middle">URL-encoded payload=JSON</text>
+    <line x1="160" y1="56" x2="205" y2="56" stroke="#7c6af7" stroke-width="1.5" marker-end="url(#arr)"/>
+
+    <!-- readAndVerify -->
+    <rect x="210" y="38" width="110" height="36" rx="6" fill="#222636" stroke="#2e3250" stroke-width="1"/>
+    <text x="265" y="53" fill="#e2e8f0" font-size="12" text-anchor="middle">readAndVerify</text>
+    <text x="265" y="68" fill="#8892b0" font-size="10" text-anchor="middle">slack-verify.js</text>
+    <text x="218" y="88" fill="#ff6b6b" font-size="10">403 on bad sig/stale ts</text>
+    <line x1="320" y1="56" x2="335" y2="56" stroke="#7c6af7" stroke-width="1.5" marker-end="url(#arr)"/>
+
+    <!-- dispatch -->
+    <rect x="340" y="38" width="160" height="36" rx="6" fill="#222636" stroke="#2e3250" stroke-width="1"/>
+    <text x="420" y="53" fill="#e2e8f0" font-size="12" text-anchor="middle">Parse payload JSON</text>
+    <text x="420" y="68" fill="#8892b0" font-size="10" text-anchor="middle">getWorkspace + dispatch by type</text>
+    <text x="348" y="88" fill="#ff6b6b" font-size="10">400 if malformed · 200 ack if workspace missing</text>
+
+    <!-- block_actions path -->
+    <text x="340" y="120" fill="#ffd080" font-size="11" font-weight="600">block_actions</text>
+    <line x1="340" y1="100" x2="340" y2="112" stroke="#ffd080" stroke-width="1"/>
+    <rect x="310" y="128" width="220" height="44" rx="6" fill="#222636" stroke="#ffd080" stroke-width="1.2"/>
+    <text x="420" y="146" fill="#e2e8f0" font-size="12" text-anchor="middle">handleConfigEditAction</text>
+    <text x="420" y="162" fill="#8892b0" font-size="10" text-anchor="middle">action_id = 'config_edit_channel'</text>
+    <line x1="530" y1="150" x2="545" y2="150" stroke="#7c6af7" stroke-width="1.5" marker-end="url(#arr)"/>
+    <rect x="550" y="132" width="180" height="36" rx="6" fill="#222636" stroke="#2e3250" stroke-width="1"/>
+    <text x="640" y="148" fill="#e2e8f0" font-size="12" text-anchor="middle">views.open(trigger_id,</text>
+    <text x="640" y="162" fill="#e2e8f0" font-size="11" text-anchor="middle">modal view)</text>
+
+    <!-- view_submission path -->
+    <text x="340" y="218" fill="#43d9ad" font-size="11" font-weight="600">view_submission</text>
+    <line x1="340" y1="197" x2="340" y2="210" stroke="#43d9ad" stroke-width="1"/>
+    <rect x="310" y="226" width="220" height="44" rx="6" fill="#222636" stroke="#43d9ad" stroke-width="1.2"/>
+    <text x="420" y="244" fill="#e2e8f0" font-size="12" text-anchor="middle">handleConfigEditSubmit</text>
+    <text x="420" y="260" fill="#8892b0" font-size="10" text-anchor="middle">callback_id = 'config_edit_channel'</text>
+
+    <!-- validation fork -->
+    <line x1="420" y1="270" x2="420" y2="286" stroke="#43d9ad" stroke-width="1"/>
+    <rect x="310" y="288" width="100" height="32" rx="6" fill="#2a2010" stroke="#ffd080" stroke-width="1"/>
+    <text x="360" y="304" fill="#ffd080" font-size="10.5" text-anchor="middle">invalid schedule</text>
+    <text x="360" y="318" fill="#8892b0" font-size="10" text-anchor="middle">→ 200 errors JSON</text>
+
+    <rect x="430" y="288" width="100" height="32" rx="6" fill="#1a2e20" stroke="#43d9ad" stroke-width="1"/>
+    <text x="480" y="304" fill="#43d9ad" font-size="10.5" text-anchor="middle">valid schedule</text>
+    <text x="480" y="318" fill="#8892b0" font-size="10" text-anchor="middle">→ update DB + ack</text>
+    <line x1="530" y1="304" x2="545" y2="304" stroke="#7c6af7" stroke-width="1.5" marker-end="url(#arr)"/>
+    <rect x="550" y="286" width="180" height="36" rx="6" fill="#222636" stroke="#2e3250" stroke-width="1"/>
+    <text x="640" y="302" fill="#e2e8f0" font-size="12" text-anchor="middle">updateChannelSchedule</text>
+    <text x="640" y="316" fill="#8892b0" font-size="10" text-anchor="middle">+ onReschedule(workspaceId)</text>
+
+    <!-- other types -->
+    <text x="340" y="366" fill="#8892b0" font-size="11">view_closed / unknown type</text>
+    <rect x="310" y="374" width="150" height="28" rx="6" fill="#222636" stroke="#2e3250" stroke-width="1"/>
+    <text x="385" y="391" fill="#8892b0" font-size="11" text-anchor="middle">200 empty ack</text>
+  </svg>
+
+  <h3>Step-by-step</h3>
+  <div class="flow-step"><div class="step-num">1</div><div class="step-body"><code>POST /slack/interactions</code> arrives as <code>application/x-www-form-urlencoded</code> with a single field <code>payload</code> containing JSON.</div></div>
+  <div class="flow-step"><div class="step-num">2</div><div class="step-body"><code>readAndVerify(req, secret)</code> reads the raw body and checks HMAC-SHA256 signature + timestamp. Throws <code>{statusCode:403}</code> on failure.</div></div>
+  <div class="flow-step"><div class="step-num">3</div><div class="step-body">Parse: <code>const payload = JSON.parse(new URLSearchParams(rawBody).get('payload'))</code>. Return 400 if field missing or JSON malformed.</div></div>
+  <div class="flow-step"><div class="step-num">4</div><div class="step-body"><code>getWorkspace(db, payload.team.id)</code>. If null (workspace uninstalled), ack 200 empty and return.</div></div>
+  <div class="flow-step"><div class="step-num">5</div><div class="step-body">Dispatch by <code>payload.type</code>:
+    <ul style="margin-top:6px">
+      <li><code>block_actions</code> → loop <code>payload.actions</code>, dispatch each by <code>action.action_id</code></li>
+      <li><code>view_submission</code> → dispatch by <code>payload.view.callback_id</code></li>
+      <li><code>view_closed</code> / anything else → 200 empty ack</li>
+    </ul>
+  </div></div>
+
+  <!-- INTERACTIONS.JS -->
+  <h2 id="interactions-js"><code>src/interactions.js</code></h2>
+
+  <h3>Public API</h3>
+  <table>
+    <tr><th>Export</th><th>Signature</th><th>Description</th></tr>
+    <tr>
+      <td>handleInteractions</td>
+      <td><code>(db, req, res, onReschedule?) → Promise&lt;boolean&gt;</code></td>
+      <td>Main HTTP handler. Returns <code>false</code> if route not matched (non-POST or wrong path). Returns <code>true</code> if handled (even on errors — response has been sent).</td>
+    </tr>
+    <tr>
+      <td>validateInteractionsEnvVars</td>
+      <td><code>() → void</code></td>
+      <td>Throws if <code>SLACK_SIGNING_SECRET</code> missing. Call at server startup.</td>
+    </tr>
+    <tr>
+      <td>_setApiClientForTest</td>
+      <td><code>(fn?) → void</code></td>
+      <td>Override the WebClient factory for tests. Pass <code>null</code> to restore default.</td>
+    </tr>
+  </table>
+
+  <h3>Internal functions</h3>
+  <table>
+    <tr><th>Function</th><th>Description</th></tr>
+    <tr>
+      <td>handleConfigEditAction(db, workspace, action, triggerId, res)</td>
+      <td>Handles <code>block_actions</code> with <code>action_id='config_edit_channel'</code>. Fetches current channel schedule from DB, calls <code>views.open</code> with pre-filled modal, acks 200 empty. Logs and acks silently on API failure.</td>
+    </tr>
+    <tr>
+      <td>handleConfigEditSubmit(db, payload, onReschedule, res)</td>
+      <td>Handles <code>view_submission</code> with <code>callback_id='config_edit_channel'</code>. Validates both schedule strings, updates DB, calls <code>onReschedule</code>, acks 200 empty. Returns inline Slack errors on invalid input.</td>
+    </tr>
+  </table>
+
+  <h3>WebClient injection pattern</h3>
+<pre><code>const { WebClient } = require('@slack/web-api');
+
+let _apiClientFactory = (token) => new WebClient(token);
+
+function _setApiClientForTest(fn) {
+  _apiClientFactory = fn || ((token) => new WebClient(token));
+}
+
+// Usage inside handleConfigEditAction:
+const client = _apiClientFactory(workspace.bot_token);
+await client.views.open({ trigger_id: triggerId, view: { ... } });
+</code></pre>
+
+  <!-- MODAL DESIGN -->
+  <h2 id="modal">Modal Design (Block Kit)</h2>
+
+  <p>
+    The modal is opened by <code>views.open</code> in response to a <code>config_edit_channel</code>
+    button click. It carries schedule state in <code>private_metadata</code> so the submit handler
+    can identify the target channel without Slack session state.
+  </p>
+
+  <h3>View object</h3>
+<pre><code>{
+  type: 'modal',
+  callback_id: 'config_edit_channel',
+  private_metadata: JSON.stringify({ workspaceId: 'T...', channelId: 'C...' }),
+  title: { type: 'plain_text', text: 'Edit Channel Schedule' },
+  submit: { type: 'plain_text', text: 'Save' },
+  close:  { type: 'plain_text', text: 'Cancel' },
+  blocks: [
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: '*#channel-name*' }
+    },
+    {
+      type: 'input',
+      block_id: 'digest_schedule_block',
+      optional: true,
+      label: { type: 'plain_text', text: 'Weekly digest schedule' },
+      hint:  { type: 'plain_text', text: 'e.g. "sunday 18:00" or "monday 09:00" — leave blank to disable' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'digest_schedule_input',
+        initial_value: channel.digest_schedule || ''   // pre-filled
+      }
+    },
+    {
+      type: 'input',
+      block_id: 'daily_schedule_block',
+      optional: true,
+      label: { type: 'plain_text', text: 'Daily digest schedule' },
+      hint:  { type: 'plain_text', text: 'e.g. "weekdays 09:00" — leave blank to disable' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'daily_schedule_input',
+        initial_value: channel.daily_digest_schedule || ''  // pre-filled
+      }
+    }
+  ]
+}
+</code></pre>
+
+  <aside class="warn">
+    <strong>Pre-fill requirement:</strong> <code>handleConfigEditAction</code> must load the channel row from DB
+    (<code>SELECT digest_schedule, daily_digest_schedule, name FROM channels WHERE workspace_id = ? AND channel_id = ?</code>)
+    to populate <code>initial_value</code> and the channel name in the section header.
+    If the channel row is missing, open the modal with empty initial values.
+  </aside>
+
+  <h3>Submit handler: extracting values</h3>
+<pre><code>const values = payload.view.state.values;
+const digestSchedule  = values.digest_schedule_block?.digest_schedule_input?.value?.trim() || '';
+const dailySchedule   = values.daily_schedule_block?.daily_schedule_input?.value?.trim()  || '';
+</code></pre>
+
+  <h3>Validation response (invalid input)</h3>
+<pre><code>// Return as 200 JSON — Slack renders errors inline in the modal
+{
+  response_action: 'errors',
+  errors: {
+    digest_schedule_block: 'Invalid schedule format. Use e.g. "sunday 18:00" or leave blank to disable.'
+  }
+}
+</code></pre>
+  <p>Validate each non-empty field independently. If both are invalid, include both block IDs in the <code>errors</code> object.</p>
+
+  <!-- DB CHANGE -->
+  <h2 id="db">DB Change — <code>src/db.js</code></h2>
+
+  <h3>New function: <code>updateChannelSchedule</code></h3>
+<pre><code>/**
+ * Update digest schedules for a channel.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
+ * @param {string} channelId
+ * @param {string|null} digestSchedule - weekly schedule, or null to disable
+ * @param {string|null} dailySchedule  - daily schedule, or null to disable
+ */
+function updateChannelSchedule(db, workspaceId, channelId, digestSchedule, dailySchedule) {
+  db.prepare(`
+    UPDATE channels
+    SET digest_schedule = ?, daily_digest_schedule = ?
+    WHERE workspace_id = ? AND channel_id = ?
+  `).run(digestSchedule || null, dailySchedule || null, workspaceId, channelId);
+}
+</code></pre>
+
+  <p>
+    Empty string input is coerced to <code>null</code> (disabled). The <code>UPDATE</code> is a no-op if the
+    <code>(workspaceId, channelId)</code> row does not exist — this cannot happen in practice since the
+    Edit button only appears for channels already in the DB.
+  </p>
+  <p>Add <code>updateChannelSchedule</code> to <code>module.exports</code>.</p>
+
+  <!-- COMMANDS.JS CHANGE -->
+  <h2 id="commands-js"><code>src/commands.js</code> Change</h2>
+
+  <p>
+    <code>subConfig</code> currently renders each channel as a plain <code>section</code> block.
+    Add an <code>accessory</code> button so users can trigger the edit modal directly from the config output.
+  </p>
+
+  <h3>Before</h3>
+<pre><code>blocks.push({
+  type: 'section',
+  text: {
+    type: 'mrkdwn',
+    text: `*${label}*\nDigest: \`${ch.digest_schedule || 'disabled'}\`\n...`
+  }
+});
+</code></pre>
+
+  <h3>After</h3>
+<pre><code>blocks.push({
+  type: 'section',
+  text: {
+    type: 'mrkdwn',
+    text: `*${label}*\nDigest: \`${ch.digest_schedule || 'disabled'}\`\n...`
+  },
+  accessory: {
+    type: 'button',
+    text: { type: 'plain_text', text: 'Edit' },
+    action_id: 'config_edit_channel',
+    value: ch.id
+  }
+});
+</code></pre>
+
+  <aside>
+    <strong>action_id <code>'config_edit_channel'</code></strong> and <strong>value <code>ch.id</code></strong> (the channel_id) are the two values
+    <code>handleConfigEditAction</code> reads from the action payload. <code>ch.id</code> must be the raw Slack channel ID
+    (e.g. <code>C12345</code>), not the display name.
+  </aside>
+
+  <!-- SERVER.JS CHANGE -->
+  <h2 id="server-js"><code>src/server.js</code> Change</h2>
+
+  <h3>Startup validation</h3>
+<pre><code>const { validateInteractionsEnvVars, handleInteractions } = require('./interactions.js');
+
+async function start() {
+  validateEncryptionKey();
+  validateSlackEnvVars();
+  validateSlackEventsEnvVars();
+  validateSlackCommandsEnvVars();
+  validateInteractionsEnvVars();   // ← add
+  // ...
+}
+</code></pre>
+
+  <h3>Route and onReschedule callback</h3>
+<pre><code>const onReschedule = async (workspaceId) => {
+  await registry.scheduleWorkspace(db, workspaceId, dryRun);
+};
+
+// Inside the HTTP handler (after handleSlashCommand, before 404):
+} else if (await handleInteractions(db, req, res, onReschedule)) {
+  // handled by interactions.js
+} else {
+  res.writeHead(404);
+  res.end();
+}
+</code></pre>
+
+  <aside>
+    <strong>Route order matters.</strong> <code>handleInteractions</code> checks for <code>POST /slack/interactions</code>
+    and returns <code>false</code> otherwise, so inserting it after <code>handleSlashCommand</code> (which checks
+    <code>POST /slack/commands</code>) is safe. The 404 branch remains last.
+  </aside>
+
+  <!-- ERROR HANDLING -->
+  <h2 id="errors">Error Handling</h2>
+
+  <table>
+    <tr><th>Scenario</th><th>Response</th><th>Notes</th></tr>
+    <tr>
+      <td>Bad/missing HMAC signature</td>
+      <td>403 empty</td>
+      <td>Thrown by <code>readAndVerify</code>, caught in handler.</td>
+    </tr>
+    <tr>
+      <td>Stale timestamp (&gt;300 s)</td>
+      <td>403 empty</td>
+      <td>Thrown by <code>readAndVerify</code>.</td>
+    </tr>
+    <tr>
+      <td>Non-POST or path ≠ <code>/slack/interactions</code></td>
+      <td><code>return false</code></td>
+      <td>Not our route — let server.js continue.</td>
+    </tr>
+    <tr>
+      <td><code>payload</code> field missing or JSON malformed</td>
+      <td>400 empty</td>
+      <td>Slack shouldn't send this, but defend anyway.</td>
+    </tr>
+    <tr>
+      <td>Workspace not in DB</td>
+      <td>200 empty ack</td>
+      <td>Workspace was uninstalled. Ignore silently.</td>
+    </tr>
+    <tr>
+      <td>Invalid schedule string on submit</td>
+      <td>200 + <code>{response_action:'errors', errors:{...}}</code></td>
+      <td>Slack renders the error inline in the modal. User corrects and resubmits.</td>
+    </tr>
+    <tr>
+      <td><code>views.open</code> API failure</td>
+      <td>200 empty ack</td>
+      <td>Log <code>[interactions] views.open failed: msg</code>. Best effort — we already showed the button.</td>
+    </tr>
+    <tr>
+      <td>DB update failure</td>
+      <td>200 empty ack</td>
+      <td>Log <code>[interactions] DB update failed: msg</code>. Modal closes; user sees no error (acceptable for now).</td>
+    </tr>
+    <tr>
+      <td>Unknown <code>action_id</code> or <code>callback_id</code></td>
+      <td>200 empty ack</td>
+      <td>Future-proofing — ignore unknown interactions gracefully.</td>
+    </tr>
+    <tr>
+      <td><code>view_closed</code> type</td>
+      <td>200 empty ack</td>
+      <td>User dismissed the modal. No action needed.</td>
+    </tr>
+  </table>
+
+  <!-- TEST PLAN -->
+  <h2 id="tests">Test Plan — <code>test/interactions.test.js</code></h2>
+
+  <p>
+    Uses <code>node:test</code> + <code>node:assert</code>. In-memory SQLite (<code>openDb(':memory:')</code>).
+    WebClient calls injected via <code>_setApiClientForTest</code>.
+    <code>readAndVerify</code> is not mocked — tests construct valid HMAC signatures the same way
+    <code>test/slack-verify.test.js</code> does, or rely on the 403 path.
+  </p>
+
+  <table>
+    <tr><th>#</th><th>Test description</th><th>What it asserts</th></tr>
+    <tr>
+      <td>1</td>
+      <td>403 on bad signature</td>
+      <td>Tampered body → response status 403</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>403 on stale timestamp</td>
+      <td>Timestamp &gt;300 s in the past → 403</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Non-POST returns false</td>
+      <td><code>GET /slack/interactions</code> → handler returns <code>false</code>, no response sent</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Wrong path returns false</td>
+      <td><code>POST /slack/events</code> → handler returns <code>false</code></td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>block_actions config_edit_channel → views.open called</td>
+      <td>Injected client captures <code>views.open</code> call; asserts <code>trigger_id</code>, modal <code>callback_id</code>, <code>private_metadata</code> contains correct <code>channelId</code>; response is 200 empty</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>Unknown action_id → 200 ack, no API call</td>
+      <td>Injected client's <code>views.open</code> not called; response 200 empty</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>view_submission valid schedules → DB updated, onReschedule called</td>
+      <td>After submit, <code>SELECT digest_schedule, daily_digest_schedule FROM channels</code> returns new values; <code>onReschedule</code> called with correct workspaceId; response body is empty</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>view_submission invalid schedule → inline error</td>
+      <td>Response JSON has <code>response_action:'errors'</code> and <code>errors.digest_schedule_block</code> set; DB unchanged</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>view_submission blank schedule → null in DB</td>
+      <td>Empty string input → <code>digest_schedule</code> column is <code>null</code> after update</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>Workspace not in DB → 200 ack</td>
+      <td>Valid payload for unknown team_id → 200 empty, no views.open, no DB write</td>
+    </tr>
+  </table>
+
+  <details>
+    <summary>Test helper: building a valid signed payload</summary>
+    <div>
+<pre><code>const crypto = require('node:crypto');
+
+function makeInteractionsRequest(payloadObj, secret = 'test-secret', tsOffset = 0) {
+  const ts = Math.floor(Date.now() / 1000) + tsOffset;
+  const payloadJson = JSON.stringify(payloadObj);
+  const body = new URLSearchParams({ payload: payloadJson }).toString();
+  const sigBase = `v0:${ts}:${body}`;
+  const sig = 'v0=' + crypto.createHmac('sha256', secret).update(sigBase).digest('hex');
+  return {
+    method: 'POST',
+    url: '/slack/interactions',
+    headers: {
+      'x-slack-request-timestamp': String(ts),
+      'x-slack-signature': sig,
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body
+  };
+}
+</code></pre>
+    </div>
+  </details>
+
+  <details>
+    <summary>Test helper: mock Slack API client</summary>
+    <div>
+<pre><code>function makeApiClient() {
+  const calls = { viewsOpen: [] };
+  const client = {
+    views: {
+      open: async (args) => { calls.viewsOpen.push(args); return {}; }
+    }
+  };
+  return { client, calls };
+}
+
+// Usage:
+const { client, calls } = makeApiClient();
+_setApiClientForTest(() => client);
+// ... run request ...
+assert.equal(calls.viewsOpen.length, 1);
+assert.equal(calls.viewsOpen[0].trigger_id, 'test-trigger');
+_setApiClientForTest(null); // restore
+</code></pre>
+    </div>
+  </details>
+
+</main>
+
+<script>
+  // Highlight active nav link on scroll
+  const anchors = document.querySelectorAll('h2[id]');
+  const links   = document.querySelectorAll('nav a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const link = document.querySelector(`nav a[href="#${e.target.id}"]`);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { threshold: 0.5 });
+  anchors.forEach(a => obs.observe(a));
+</script>
+</body>
+</html>
