@@ -1,0 +1,135 @@
+'use strict';
+
+process.env.ENCRYPTION_KEY = '0'.repeat(64);
+process.env.SLACK_SIGNING_SECRET = 'test-ix-secret';
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { createHmac } = require('node:crypto');
+const { openDb, upsertWorkspaceFromOAuth } = require('../src/db.js');
+const { handleInteractions, _setApiClientForTest } = require('../src/interactions.js');
+
+const SECRET = 'test-ix-secret';
+
+function sign(timestamp, body) {
+  return 'v0=' + createHmac('sha256', SECRET).update(`v0:${timestamp}:${body}`).digest('hex');
+}
+
+function freshTs() {
+  return Math.floor(Date.now() / 1000).toString();
+}
+
+function staleTs() {
+  return String(Math.floor(Date.now() / 1000) - 400);
+}
+
+function makeReq(method, url, headers, body) {
+  const buf = Buffer.from(typeof body === 'string' ? body : '', 'utf8');
+  return {
+    method, url,
+    headers: headers || {},
+    on(event, cb) {
+      if (event === 'data') cb(buf);
+      if (event === 'end') cb();
+      return this;
+    }
+  };
+}
+
+function mockRes() {
+  const res = { _statusCode: null, _body: '', _headers: {} };
+  res.writeHead = (code, hdrs) => { res._statusCode = code; if (hdrs) Object.assign(res._headers, hdrs); };
+  res.end = (body) => { res._body = body || ''; };
+  return res;
+}
+
+function makeBody(payloadObj) {
+  return new URLSearchParams({ payload: JSON.stringify(payloadObj) }).toString();
+}
+
+function makeSignedReq(payloadObj) {
+  const body = makeBody(payloadObj);
+  const ts = freshTs();
+  return makeReq('POST', '/slack/interactions', {
+    'x-slack-request-timestamp': ts,
+    'x-slack-signature': sign(ts, body)
+  }, body);
+}
+
+function makeDb() {
+  const db = openDb(':memory:');
+  upsertWorkspaceFromOAuth(db, { teamId: 'T123', teamName: 'Test WS', botToken: 'xoxb-test', installedBy: 'U1' });
+  db.prepare('INSERT INTO channels (workspace_id, channel_id, name, digest_schedule, daily_digest_schedule) VALUES (?,?,?,?,?)')
+    .run('T123', 'C456', 'general', 'sunday 18:00', 'weekdays 09:00');
+  return db;
+}
+
+test('handleInteractions returns false for GET', async () => {
+  const db = makeDb();
+  const req = makeReq('GET', '/slack/interactions', {}, '');
+  const res = mockRes();
+  const result = await handleInteractions(db, req, res, null);
+  assert.strictEqual(result, false);
+  assert.strictEqual(res._statusCode, null);
+  db.close();
+});
+
+test('handleInteractions returns false for wrong path', async () => {
+  const db = makeDb();
+  const req = makeReq('POST', '/slack/events', {}, '');
+  const res = mockRes();
+  const result = await handleInteractions(db, req, res, null);
+  assert.strictEqual(result, false);
+  db.close();
+});
+
+test('handleInteractions returns 403 for bad signature', async () => {
+  const db = makeDb();
+  const ts = freshTs();
+  const req = makeReq('POST', '/slack/interactions', {
+    'x-slack-request-timestamp': ts,
+    'x-slack-signature': 'v0=badsig'
+  }, 'payload={}');
+  const res = mockRes();
+  await handleInteractions(db, req, res, null);
+  assert.strictEqual(res._statusCode, 403);
+  db.close();
+});
+
+test('handleInteractions returns 403 for stale timestamp', async () => {
+  const db = makeDb();
+  const ts = staleTs();
+  const body = makeBody({ type: 'block_actions', team: { id: 'T123' }, actions: [] });
+  const req = makeReq('POST', '/slack/interactions', {
+    'x-slack-request-timestamp': ts,
+    'x-slack-signature': sign(ts, body)
+  }, body);
+  const res = mockRes();
+  await handleInteractions(db, req, res, null);
+  assert.strictEqual(res._statusCode, 403);
+  db.close();
+});
+
+test('handleInteractions returns 400 for missing payload field', async () => {
+  const db = makeDb();
+  const body = 'not_payload=hello';
+  const ts = freshTs();
+  const req = makeReq('POST', '/slack/interactions', {
+    'x-slack-request-timestamp': ts,
+    'x-slack-signature': sign(ts, body)
+  }, body);
+  const res = mockRes();
+  await handleInteractions(db, req, res, null);
+  assert.strictEqual(res._statusCode, 400);
+  db.close();
+});
+
+test('handleInteractions acks 200 for unknown workspace', async () => {
+  const db = makeDb();
+  const req = makeSignedReq({ type: 'block_actions', team: { id: 'T_UNKNOWN' }, trigger_id: 't1', actions: [] });
+  const res = mockRes();
+  await handleInteractions(db, req, res, null);
+  assert.strictEqual(res._statusCode, 200);
+  assert.strictEqual(res._body, '');
+  db.close();
+});
