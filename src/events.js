@@ -1,4 +1,4 @@
-const { createHmac } = require('node:crypto');
+const { readAndVerify } = require('./slack-verify.js');
 const { markWorkspaceInactive } = require('./db.js');
 
 /**
@@ -24,28 +24,11 @@ async function handleEventsRequest(db, req, res, onUninstall) {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname !== '/slack/events') return false;
 
-  const chunks = [];
-  await new Promise((resolve, reject) => {
-    req.on('data', chunk => chunks.push(chunk));
-    req.on('end', resolve);
-    req.on('error', reject);
-  });
-  const rawBody = Buffer.concat(chunks).toString('utf8');
-
-  const timestamp = req.headers['x-slack-request-timestamp'];
-  const ageSecs = Math.abs(Date.now() / 1000 - parseInt(timestamp || '0', 10));
-  if (!timestamp || ageSecs > 300) {
-    res.writeHead(403);
-    res.end();
-    return true;
-  }
-
-  const expected = 'v0=' + createHmac('sha256', process.env.SLACK_SIGNING_SECRET)
-    .update(`v0:${timestamp}:${rawBody}`)
-    .digest('hex');
-  const provided = req.headers['x-slack-signature'];
-  if (!provided || provided !== expected) {
-    res.writeHead(403);
+  let rawBody;
+  try {
+    ({ rawBody } = await readAndVerify(req, process.env.SLACK_SIGNING_SECRET));
+  } catch (err) {
+    res.writeHead(err.statusCode || 500);
     res.end();
     return true;
   }
