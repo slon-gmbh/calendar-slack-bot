@@ -5,6 +5,7 @@ const { validateEncryptionKey } = require('./crypto.js');
 const { validateSlackEnvVars, handleOAuthRequest } = require('./oauth.js');
 const { validateSlackEventsEnvVars, handleEventsRequest } = require('./events.js');
 const { validateSlackCommandsEnvVars, handleSlashCommand } = require('./commands.js');
+const { validateInteractionsEnvVars, handleInteractions } = require('./interactions.js');
 const registry = require('./scheduler-registry.js');
 
 async function start() {
@@ -12,6 +13,7 @@ async function start() {
   validateSlackEnvVars();
   validateSlackEventsEnvVars();
   validateSlackCommandsEnvVars();
+  validateInteractionsEnvVars();
 
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
@@ -29,6 +31,10 @@ async function start() {
     registry.unscheduleWorkspace(workspaceId);
   };
 
+  const onReschedule = async (workspaceId) => {
+    await registry.scheduleWorkspace(db, workspaceId, dryRun);
+  };
+
   const port = parseInt(process.env.PORT || '8080', 10);
   const httpServer = http.createServer(async (req, res) => {
     try {
@@ -41,6 +47,8 @@ async function start() {
         // handled by events.js
       } else if (await handleSlashCommand(db, req, res)) {
         // handled by commands.js
+      } else if (await handleInteractions(db, req, res, onReschedule)) {
+        // handled by interactions.js
       } else {
         res.writeHead(404);
         res.end();
