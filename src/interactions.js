@@ -37,6 +37,59 @@ function ackJson(res, body) {
 }
 
 async function handleConfigEditAction(db, workspace, action, triggerId, res) {
+  const channelId = action.value;
+  const row = db.prepare(
+    'SELECT digest_schedule, daily_digest_schedule, name FROM channels WHERE workspace_id = ? AND channel_id = ?'
+  ).get(workspace.team_id, channelId);
+
+  const label = row?.name ? `#${row.name}` : channelId;
+
+  const view = {
+    type: 'modal',
+    callback_id: 'config_edit_channel',
+    private_metadata: JSON.stringify({ workspaceId: workspace.team_id, channelId }),
+    title: { type: 'plain_text', text: 'Edit Channel Schedule' },
+    submit: { type: 'plain_text', text: 'Save' },
+    close:  { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*${label}*` }
+      },
+      {
+        type: 'input',
+        block_id: 'digest_schedule_block',
+        optional: true,
+        label: { type: 'plain_text', text: 'Weekly digest schedule' },
+        hint:  { type: 'plain_text', text: 'e.g. "sunday 18:00" or "monday 09:00" — leave blank to disable' },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'digest_schedule_input',
+          initial_value: row?.digest_schedule || ''
+        }
+      },
+      {
+        type: 'input',
+        block_id: 'daily_schedule_block',
+        optional: true,
+        label: { type: 'plain_text', text: 'Daily digest schedule' },
+        hint:  { type: 'plain_text', text: 'e.g. "weekdays 09:00" — leave blank to disable' },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'daily_schedule_input',
+          initial_value: row?.daily_digest_schedule || ''
+        }
+      }
+    ]
+  };
+
+  try {
+    const client = _apiClientFactory(workspace.bot_token);
+    await client.views.open({ trigger_id: triggerId, view });
+  } catch (err) {
+    console.error('[interactions] views.open failed:', err.message);
+  }
+
   ackEmpty(res);
 }
 

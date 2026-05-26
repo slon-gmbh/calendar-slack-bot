@@ -133,3 +133,56 @@ test('handleInteractions acks 200 for unknown workspace', async () => {
   assert.strictEqual(res._body, '');
   db.close();
 });
+
+test('block_actions config_edit_channel calls views.open with correct args', async () => {
+  const db = makeDb();
+  const viewsCalls = [];
+  _setApiClientForTest(() => ({
+    views: { open: async (args) => { viewsCalls.push(args); return {}; } }
+  }));
+
+  const req = makeSignedReq({
+    type: 'block_actions',
+    team: { id: 'T123' },
+    trigger_id: 'trigger-abc',
+    actions: [{ action_id: 'config_edit_channel', value: 'C456' }]
+  });
+  const res = mockRes();
+
+  await handleInteractions(db, req, res, null);
+
+  assert.strictEqual(res._statusCode, 200);
+  assert.strictEqual(viewsCalls.length, 1);
+  assert.strictEqual(viewsCalls[0].trigger_id, 'trigger-abc');
+  assert.strictEqual(viewsCalls[0].view.callback_id, 'config_edit_channel');
+  const meta = JSON.parse(viewsCalls[0].view.private_metadata);
+  assert.strictEqual(meta.channelId, 'C456');
+  assert.strictEqual(meta.workspaceId, 'T123');
+
+  _setApiClientForTest(null);
+  db.close();
+});
+
+test('block_actions with unknown action_id acks 200 without calling views.open', async () => {
+  const db = makeDb();
+  const viewsCalls = [];
+  _setApiClientForTest(() => ({
+    views: { open: async (args) => { viewsCalls.push(args); return {}; } }
+  }));
+
+  const req = makeSignedReq({
+    type: 'block_actions',
+    team: { id: 'T123' },
+    trigger_id: 'trigger-xyz',
+    actions: [{ action_id: 'some_other_action', value: 'whatever' }]
+  });
+  const res = mockRes();
+
+  await handleInteractions(db, req, res, null);
+
+  assert.strictEqual(res._statusCode, 200);
+  assert.strictEqual(viewsCalls.length, 0);
+
+  _setApiClientForTest(null);
+  db.close();
+});
