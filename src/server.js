@@ -4,12 +4,14 @@ const { openDb } = require('./db.js');
 const { validateEncryptionKey } = require('./crypto.js');
 const { validateSlackEnvVars, handleOAuthRequest } = require('./oauth.js');
 const { validateSlackEventsEnvVars, handleEventsRequest } = require('./events.js');
+const { validateSlackCommandsEnvVars, handleSlashCommand } = require('./commands.js');
 const registry = require('./scheduler-registry.js');
 
 async function start() {
   validateEncryptionKey();
   validateSlackEnvVars();
   validateSlackEventsEnvVars();
+  validateSlackCommandsEnvVars();
 
   const dataDir = process.env.DATA_DIR;
   if (!dataDir) throw new Error('DATA_DIR environment variable not set');
@@ -37,6 +39,8 @@ async function start() {
         // handled by oauth.js
       } else if (await handleEventsRequest(db, req, res, onUninstall)) {
         // handled by events.js
+      } else if (await handleSlashCommand(db, req, res)) {
+        // handled by commands.js
       } else {
         res.writeHead(404);
         res.end();
