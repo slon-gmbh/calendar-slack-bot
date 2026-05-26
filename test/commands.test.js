@@ -207,3 +207,30 @@ test('empty text returns "Unknown command" message', async () => {
   assert.ok(JSON.parse(res._body).text.includes('Unknown command'));
   db.close();
 });
+
+test('/calendar config includes Edit button accessory on each channel block', async () => {
+  const db = openDb(':memory:');
+  const { seedWorkspace } = require('../src/config.js');
+  seedWorkspace(db, 'T_BTN', {
+    locale: 'en-US',
+    caldav_credentials: { username: 'user', password: 'pass' },
+    calendars: { 'CAL1': { name: 'Work Calendar', caldav_url: 'https://nc.example.com/cal' } },
+    channels: [{
+      id: 'C_BTN', name: 'btn-test', canvas_id: 'CV_B',
+      digest_schedule: 'monday 09:00', daily_digest_schedule: false,
+      show_empty_days: false, calendars: ['CAL1']
+    }]
+  });
+
+  const res = mockRes();
+  await handleSlashCommand(db, makeValidReq('config', 'T_BTN'), res);
+
+  assert.strictEqual(res._statusCode, 200);
+  const payload = JSON.parse(res._body);
+  const sectionWithAccessory = payload.blocks.find(b => b.type === 'section' && b.accessory);
+  assert.ok(sectionWithAccessory, 'expected a section block with an accessory button');
+  assert.strictEqual(sectionWithAccessory.accessory.type, 'button');
+  assert.strictEqual(sectionWithAccessory.accessory.action_id, 'config_edit_channel');
+  assert.strictEqual(sectionWithAccessory.accessory.value, 'C_BTN');
+  db.close();
+});

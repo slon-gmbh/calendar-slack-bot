@@ -84,6 +84,12 @@ function subConfig(db, teamId, teamName, res) {
       text: {
         type: 'mrkdwn',
         text: `*${label}*\nDigest: \`${ch.digest_schedule || 'disabled'}\`\nDaily: \`${ch.daily_digest_schedule || 'disabled'}\`\nCalendars: ${calNames}`
+      },
+      accessory: {
+        type: 'button',
+        text: { type: 'plain_text', text: 'Edit' },
+        action_id: 'config_edit_channel',
+        value: ch.id
       }
     });
     if (i < config.channels.length - 1) blocks.push({ type: 'divider' });
