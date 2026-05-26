@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { openDb, loadEvents, saveEvents, loadColor, saveColor, loadRunState, saveRunState, loadPending, savePending, getWorkspace, upsertWorkspace } = require('../src/db.js');
+const { openDb, loadEvents, saveEvents, loadColor, saveColor, loadRunState, saveRunState, loadPending, savePending, getWorkspace, upsertWorkspace, updateChannelSchedule } = require('../src/db.js');
 
 process.env.ENCRYPTION_KEY = '0'.repeat(64);
 
@@ -319,5 +319,35 @@ test('listActiveWorkspaces excludes workspace marked inactive via markWorkspaceI
   const rows = listActiveWorkspaces(db);
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(rows[0].team_id, 'T_STAYS');
+  db.close();
+});
+
+test('updateChannelSchedule updates both schedule fields', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_SCHED', teamName: 'Sched WS' });
+  db.prepare('INSERT INTO channels (workspace_id, channel_id, name, digest_schedule, daily_digest_schedule) VALUES (?,?,?,?,?)')
+    .run('T_SCHED', 'C_SCHED', 'general', 'sunday 18:00', 'weekdays 09:00');
+
+  updateChannelSchedule(db, 'T_SCHED', 'C_SCHED', 'monday 10:00', 'daily 08:00');
+
+  const row = db.prepare('SELECT digest_schedule, daily_digest_schedule FROM channels WHERE workspace_id=? AND channel_id=?')
+    .get('T_SCHED', 'C_SCHED');
+  assert.strictEqual(row.digest_schedule, 'monday 10:00');
+  assert.strictEqual(row.daily_digest_schedule, 'daily 08:00');
+  db.close();
+});
+
+test('updateChannelSchedule stores null for empty string input', () => {
+  const db = memDb();
+  upsertWorkspace(db, { teamId: 'T_NULL', teamName: 'Null WS' });
+  db.prepare('INSERT INTO channels (workspace_id, channel_id, name, digest_schedule, daily_digest_schedule) VALUES (?,?,?,?,?)')
+    .run('T_NULL', 'C_NULL', 'test', 'sunday 18:00', 'weekdays 09:00');
+
+  updateChannelSchedule(db, 'T_NULL', 'C_NULL', '', '');
+
+  const row = db.prepare('SELECT digest_schedule, daily_digest_schedule FROM channels WHERE workspace_id=? AND channel_id=?')
+    .get('T_NULL', 'C_NULL');
+  assert.strictEqual(row.digest_schedule, null);
+  assert.strictEqual(row.daily_digest_schedule, null);
   db.close();
 });

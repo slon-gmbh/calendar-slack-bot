@@ -367,6 +367,26 @@ function markWorkspaceInactive(db, teamId) {
   db.prepare('UPDATE workspaces SET active = 0 WHERE team_id = ?').run(teamId);
 }
 
+/**
+ * Update digest schedules for a channel.
+ * No-op if the channel row does not exist.
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} workspaceId
+ * @param {string} channelId
+ * @param {string|null} digestSchedule - weekly schedule string, or null to disable
+ * @param {string|null} dailySchedule  - daily schedule string, or null to disable
+ * @example
+ * updateChannelSchedule(db, 'T123', 'C456', '0 9 * * 1', '0 8 * * *');
+ * updateChannelSchedule(db, 'T123', 'C456', null, '0 8 * * *');
+ */
+function updateChannelSchedule(db, workspaceId, channelId, digestSchedule, dailySchedule) {
+  db.prepare(`
+    UPDATE channels
+    SET digest_schedule = ?, daily_digest_schedule = ?
+    WHERE workspace_id = ? AND channel_id = ?
+  `).run(digestSchedule || null, dailySchedule || null, workspaceId, channelId);
+}
+
 module.exports = {
   openDb,
   loadEvents,
@@ -383,5 +403,6 @@ module.exports = {
   getCaldavCredentials,
   upsertWorkspaceFromOAuth,
   listActiveWorkspaces,
-  markWorkspaceInactive
+  markWorkspaceInactive,
+  updateChannelSchedule
 };
