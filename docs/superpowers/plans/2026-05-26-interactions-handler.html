@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactions Handler — Implementation Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --surface2: #252840;
+    --border: #2e3250;
+    --text: #e2e8f0;
+    --muted: #8892b0;
+    --accent: #7c83f5;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --purple: #c084fc;
+    --cyan: #22d3ee;
+    --todo-bg: #1e2235;
+    --todo-border: #3a3f6e;
+    --font-mono: 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sticky sidebar TOC */
+  nav {
+    width: 220px;
+    min-width: 220px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    flex-shrink: 0;
+  }
+
+  nav .nav-header {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    padding: 0 16px 12px;
+  }
+
+  nav a {
+    display: block;
+    padding: 6px 16px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+  }
+
+  nav a:hover {
+    color: var(--text);
+    background: var(--surface2);
+    border-left-color: var(--accent);
+  }
+
+  nav .nav-task {
+    padding-left: 28px;
+    font-size: 12px;
+  }
+
+  main {
+    flex: 1;
+    padding: 32px 40px;
+    max-width: 960px;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+
+  /* Progress overview bar */
+  .progress-overview {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 32px;
+  }
+
+  .progress-overview h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 16px;
+    font-weight: 600;
+  }
+
+  .stat-row {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 16px;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .test-progression {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    flex-wrap: wrap;
+  }
+
+  .test-count {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: var(--green);
+  }
+
+  .test-count.start {
+    color: var(--muted);
+  }
+
+  .arrow { color: var(--border); }
+
+  /* Architecture SVG section */
+  .arch-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+
+  .arch-section h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+
+  /* Task cards */
+  .task-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .task-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--surface);
+    transition: background 0.15s;
+  }
+
+  .task-header:hover {
+    background: var(--surface2);
+  }
+
+  .task-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .task-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .task-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-todo    { background: #1e2a3a; color: var(--blue); border: 1px solid #2a3d55; }
+  .badge-new     { background: #1e2a3a; color: var(--cyan); border: 1px solid #1e4060; }
+  .badge-mod     { background: #2a1e3a; color: var(--purple); border: 1px solid #3d2a55; }
+  .badge-done    { background: #1a2e1a; color: var(--green); border: 1px solid #2a4a2a; }
+
+  .files-badge {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  .toggle-icon {
+    color: var(--muted);
+    font-size: 12px;
+    transition: transform 0.2s;
+  }
+
+  .task-body {
+    border-top: 1px solid var(--border);
+    padding: 20px;
+  }
+
+  /* Steps inside card */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .step {
+    display: flex;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--todo-bg);
+    border: 1px solid var(--todo-border);
+    border-radius: 6px;
+    align-items: flex-start;
+  }
+
+  .step-check {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--muted);
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .step-text {
+    flex: 1;
+    font-size: 13px;
+  }
+
+  .step-text strong {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .step-cmd {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--cyan);
+    background: rgba(34, 211, 238, 0.07);
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-top: 4px;
+    display: inline-block;
+  }
+
+  .step-expected {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .step-expected .ok { color: var(--green); }
+  .step-expected .fail { color: var(--red); }
+
+  /* File tags */
+  .file-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .file-tag {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--surface2);
+  }
+
+  .file-tag.create { border-color: var(--cyan); color: var(--cyan); }
+  .file-tag.modify { border-color: var(--purple); color: var(--purple); }
+
+  /* Details element styling */
+  details > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 6px 0;
+  }
+
+  details > summary::-webkit-details-marker { display: none; }
+
+  details > summary::before {
+    content: '+';
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 700;
+    width: 16px;
+    text-align: center;
+  }
+
+  details[open] > summary::before { content: '−'; }
+
+  details > div {
+    margin-top: 8px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #a0aec0;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--surface2);
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: var(--cyan);
+  }
+
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  .dep-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--yellow);
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 4px;
+    padding: 4px 10px;
+    margin-bottom: 14px;
+  }
+
+  .callout {
+    background: rgba(124, 131, 245, 0.07);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .callout strong { color: var(--text); }
+
+  scrollbar-width: thin;
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-header">Plan</div>
+  <a href="#overview">Overview</a>
+  <a href="#arch">Architecture</a>
+  <a href="#task-1" class="nav-task">T1 — updateChannelSchedule</a>
+  <a href="#task-2" class="nav-task">T2 — interactions.js skeleton</a>
+  <a href="#task-3" class="nav-task">T3 — block_actions handler</a>
+  <a href="#task-4" class="nav-task">T4 — view_submission handler</a>
+  <a href="#task-5" class="nav-task">T5 — Edit button in config</a>
+  <a href="#task-6" class="nav-task">T6 — server.js wiring</a>
+</nav>
+
+<main>
+  <h1 id="overview">Slack Interactivity Handler</h1>
+  <p class="subtitle">Issue #27 &mdash; v2 branch &mdash; 2026-05-26</p>
+
+  <div class="progress-overview">
+    <h2>Progress</h2>
+    <div class="stat-row">
+      <div class="stat">
+        <span class="stat-value">6</span>
+        <span class="stat-label">Tasks</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">0</span>
+        <span class="stat-label">Done</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">+15</span>
+        <span class="stat-label">New tests</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">3</span>
+        <span class="stat-label">Files created</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">4</span>
+        <span class="stat-label">Files modified</span>
+      </div>
+    </div>
+    <div class="section-label">Test count progression</div>
+    <div class="test-progression">
+      <span class="test-count start">276</span>
+      <span class="arrow">&#8594;</span>
+      <span class="test-count">278</span>
+      <span class="arrow">&#8594;</span>
+      <span class="test-count">284</span>
+      <span class="arrow">&#8594;</span>
+      <span class="test-count">286</span>
+      <span class="arrow">&#8594;</span>
+      <span class="test-count">290</span>
+      <span class="arrow">&#8594;</span>
+      <span class="test-count">291</span>
+      <span class="arrow">&#8594;</span>
+      <span class="test-count">291</span>
+    </div>
+  </div>
+
+  <!-- Architecture diagram -->
+  <div class="arch-section" id="arch">
+    <h2>Request Flow</h2>
+    <svg width="100%" viewBox="0 0 820 380" xmlns="http://www.w3.org/2000/svg" font-family="Inter,-apple-system,sans-serif" font-size="12">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#3a3f6e"/>
+        </marker>
+        <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#4ade80"/>
+        </marker>
+        <marker id="arrow-red" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#f87171"/>
+        </marker>
+        <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#60a5fa"/>
+        </marker>
+      </defs>
+
+      <!-- Slack -->
+      <rect x="20" y="160" width="90" height="40" rx="6" fill="#252840" stroke="#3a3f6e"/>
+      <text x="65" y="185" text-anchor="middle" fill="#e2e8f0" font-weight="600">Slack</text>
+
+      <!-- POST /slack/interactions -->
+      <line x1="110" y1="180" x2="175" y2="180" stroke="#3a3f6e" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="143" y="172" text-anchor="middle" fill="#8892b0" font-size="10">POST</text>
+
+      <!-- server.js -->
+      <rect x="177" y="160" width="90" height="40" rx="6" fill="#252840" stroke="#3a3f6e"/>
+      <text x="222" y="185" text-anchor="middle" fill="#e2e8f0" font-weight="600">server.js</text>
+
+      <!-- server to interactions -->
+      <line x1="267" y1="180" x2="332" y2="180" stroke="#3a3f6e" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- interactions.js -->
+      <rect x="334" y="140" width="130" height="80" rx="6" fill="#1a1d2e" stroke="#7c83f5" stroke-width="1.5"/>
+      <text x="399" y="172" text-anchor="middle" fill="#7c83f5" font-weight="700">interactions.js</text>
+      <text x="399" y="188" text-anchor="middle" fill="#8892b0" font-size="10">readAndVerify</text>
+      <text x="399" y="203" text-anchor="middle" fill="#8892b0" font-size="10">dispatch</text>
+
+      <!-- 403 bad sig -->
+      <line x1="399" y1="140" x2="399" y2="60" stroke="#f87171" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-red)"/>
+      <rect x="340" y="30" width="120" height="26" rx="4" fill="#2e1a1a" stroke="#f87171" stroke-width="1"/>
+      <text x="400" y="47" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">403 bad/stale sig</text>
+
+      <!-- 400 bad payload -->
+      <line x1="464" y1="160" x2="540" y2="100" stroke="#f87171" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-red)"/>
+      <rect x="490" y="74" width="130" height="26" rx="4" fill="#2e1a1a" stroke="#f87171" stroke-width="1"/>
+      <text x="555" y="91" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">400 bad payload</text>
+
+      <!-- block_actions branch -->
+      <line x1="464" y1="170" x2="530" y2="170" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+      <text x="497" y="164" text-anchor="middle" fill="#60a5fa" font-size="10">block_actions</text>
+
+      <!-- views.open box -->
+      <rect x="532" y="150" width="110" height="40" rx="6" fill="#1a1e2e" stroke="#60a5fa"/>
+      <text x="587" y="171" text-anchor="middle" fill="#60a5fa" font-weight="600">views.open</text>
+      <text x="587" y="184" text-anchor="middle" fill="#8892b0" font-size="10">WebClient</text>
+
+      <!-- views.open to Slack API -->
+      <line x1="642" y1="170" x2="710" y2="170" stroke="#60a5fa" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-blue)"/>
+      <text x="760" y="165" fill="#8892b0" font-size="10">Slack API</text>
+
+      <!-- view_submission branch -->
+      <line x1="464" y1="200" x2="530" y2="255" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+      <text x="497" y="250" text-anchor="middle" fill="#4ade80" font-size="10">view_submission</text>
+
+      <!-- handleConfigEditSubmit -->
+      <rect x="532" y="240" width="130" height="50" rx="6" fill="#1a2e1a" stroke="#4ade80"/>
+      <text x="597" y="262" text-anchor="middle" fill="#4ade80" font-weight="600">validate</text>
+      <text x="597" y="278" text-anchor="middle" fill="#8892b0" font-size="10">scheduleStringToCron</text>
+
+      <!-- validation error -->
+      <line x1="662" y1="255" x2="730" y2="230" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="726" y="213" width="80" height="26" rx="4" fill="#2e2a1a" stroke="#fbbf24" stroke-width="1"/>
+      <text x="766" y="230" text-anchor="middle" fill="#fbbf24" font-size="10">inline errors</text>
+
+      <!-- db update -->
+      <line x1="597" y1="290" x2="597" y2="340" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+      <!-- db.js + onReschedule -->
+      <rect x="532" y="342" width="130" height="30" rx="6" fill="#252840" stroke="#3a3f6e"/>
+      <text x="597" y="362" text-anchor="middle" fill="#8892b0">db.js + onReschedule</text>
+
+      <!-- 200 ack -->
+      <line x1="399" y1="220" x2="399" y2="340" stroke="#3a3f6e" stroke-width="1" stroke-dasharray="3,3"/>
+      <rect x="340" y="342" width="120" height="26" rx="4" fill="#1a2e1a" stroke="#4ade80" stroke-width="1"/>
+      <text x="400" y="359" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">200 ack (empty)</text>
+    </svg>
+
+    <div style="margin-top:16px;">
+      <div class="callout">
+        <strong>Key pattern:</strong> Payload arrives as <code>application/x-www-form-urlencoded</code> with a single <code>payload</code> field containing the full JSON object &mdash; not as multiple form fields like slash commands.
+      </div>
+      <div class="callout">
+        <strong>Multi-tenant:</strong> <code>WebClient</code> is instantiated per-request using the workspace's <code>bot_token</code> from DB &mdash; no global singleton.
+      </div>
+    </div>
+  </div>
+
+  <!-- Task 1 -->
+  <div class="task-card" id="task-1">
+    <div class="task-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+      <div class="task-number">1</div>
+      <div class="task-title">updateChannelSchedule in db.js</div>
+      <div class="task-meta">
+        <span class="badge badge-mod">modify</span>
+        <span class="files-badge">db.js &bull; db.test.js</span>
+        <span class="badge badge-todo">Todo</span>
+        <span class="toggle-icon">&#9660;</span>
+      </div>
+    </div>
+    <div class="task-body">
+      <div class="file-tags">
+        <span class="file-tag modify">modify: src/db.js</span>
+        <span class="file-tag modify">modify: test/db.test.js</span>
+      </div>
+
+      <p class="section-label">Steps</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add <code>updateChannelSchedule</code> to import in test/db.test.js</strong>
+            Extend the <code>require('../src/db.js')</code> destructure to include <code>updateChannelSchedule</code>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Append 2 tests to test/db.test.js</strong>
+            Test: updates both schedule fields. Test: empty string input stores <code>null</code>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run tests to verify they fail</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/db.test.js</span>
+            <div class="step-expected"><span class="fail">FAIL</span> &mdash; <code>updateChannelSchedule is not a function</code></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Implement <code>updateChannelSchedule</code> in src/db.js</strong>
+            <details>
+              <summary>Show implementation</summary>
+              <div>function updateChannelSchedule(db, workspaceId, channelId, digestSchedule, dailySchedule) {
+  db.prepare(`
+    UPDATE channels
+    SET digest_schedule = ?, daily_digest_schedule = ?
+    WHERE workspace_id = ? AND channel_id = ?
+  `).run(digestSchedule || null, dailySchedule || null, workspaceId, channelId);
+}</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add to module.exports in src/db.js</strong>
+            Append <code>updateChannelSchedule</code> to the exports object.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run tests to verify they pass</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/db.test.js</span>
+            <div class="step-expected"><span class="ok">PASS</span> &mdash; 2 new tests</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run full suite (278 tests)</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+            <div class="step-expected"><span class="ok">278 pass, 0 fail</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Commit</strong>
+            <span class="step-cmd">git commit -m "feat: add updateChannelSchedule to db.js refs: #27"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task 2 -->
+  <div class="task-card" id="task-2">
+    <div class="task-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+      <div class="task-number">2</div>
+      <div class="task-title">interactions.js skeleton &mdash; routing, HMAC, payload parse</div>
+      <div class="task-meta">
+        <span class="badge badge-new">create</span>
+        <span class="files-badge">interactions.js &bull; interactions.test.js</span>
+        <span class="badge badge-todo">Todo</span>
+        <span class="toggle-icon">&#9660;</span>
+      </div>
+    </div>
+    <div class="task-body">
+      <div class="file-tags">
+        <span class="file-tag create">create: src/interactions.js</span>
+        <span class="file-tag create">create: test/interactions.test.js</span>
+      </div>
+
+      <div class="callout">
+        Stubs <code>handleConfigEditAction</code> and <code>handleConfigEditSubmit</code> as empty acks &mdash; Tasks 3 and 4 fill them in. The 6 routing/HMAC tests pass against the skeleton.
+      </div>
+
+      <p class="section-label">Steps (6 routing tests: +276 &rarr; 284)</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Create test/interactions.test.js</strong>
+            6 tests: GET returns false, wrong path returns false, bad sig 403, stale ts 403, missing payload 400, unknown workspace acks 200.
+            <details>
+              <summary>Show test helpers</summary>
+              <div>const SECRET = 'test-ix-secret';
+
+function sign(timestamp, body) {
+  return 'v0=' + createHmac('sha256', SECRET)
+    .update(`v0:${timestamp}:${body}`).digest('hex');
+}
+
+function makeBody(payloadObj) {
+  return new URLSearchParams({ payload: JSON.stringify(payloadObj) }).toString();
+}
+
+function makeDb() {
+  const db = openDb(':memory:');
+  upsertWorkspaceFromOAuth(db, { teamId: 'T123', teamName: 'Test WS',
+    botToken: 'xoxb-test', installedBy: 'U1' });
+  db.prepare('INSERT INTO channels (workspace_id, channel_id, name, ...) VALUES (?,?,?,?,?)')
+    .run('T123', 'C456', 'general', 'sunday 18:00', 'weekdays 09:00');
+  return db;
+}</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run tests to verify they fail</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/interactions.test.js</span>
+            <div class="step-expected"><span class="fail">FAIL</span> &mdash; <code>Cannot find module '../src/interactions.js'</code></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Create src/interactions.js</strong>
+            Full routing skeleton with stubs for action/submit handlers, <code>_setApiClientForTest</code>, <code>validateInteractionsEnvVars</code>.
+            <details>
+              <summary>Show exports</summary>
+              <div>module.exports = { validateInteractionsEnvVars, handleInteractions, _setApiClientForTest };</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run 6 routing tests to verify they pass</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/interactions.test.js</span>
+            <div class="step-expected"><span class="ok">6 pass</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run full suite (284 tests)</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+            <div class="step-expected"><span class="ok">284 pass, 0 fail</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Commit</strong>
+            <span class="step-cmd">git commit -m "feat: add interactions.js skeleton with routing and HMAC refs: #27"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task 3 -->
+  <div class="task-card" id="task-3">
+    <div class="task-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+      <div class="task-number">3</div>
+      <div class="task-title">block_actions handler &mdash; views.open</div>
+      <div class="task-meta">
+        <span class="badge badge-mod">modify</span>
+        <span class="files-badge">interactions.js &bull; interactions.test.js</span>
+        <span class="badge badge-todo">Todo</span>
+        <span class="toggle-icon">&#9660;</span>
+      </div>
+    </div>
+    <div class="task-body">
+      <div class="file-tags">
+        <span class="file-tag modify">modify: src/interactions.js</span>
+        <span class="file-tag modify">modify: test/interactions.test.js</span>
+      </div>
+
+      <div class="dep-note">&#9432; Depends on Task 2 (skeleton)</div>
+
+      <div class="callout">
+        <strong>Injection pattern:</strong> Tests use <code>_setApiClientForTest(() => ({ views: { open: async () => ({}) } }))</code> to stub the Slack API. Always call <code>_setApiClientForTest(null)</code> after the test to restore.
+      </div>
+
+      <p class="section-label">Steps (2 tests: 284 &rarr; 286)</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Append 2 block_actions tests to test/interactions.test.js</strong>
+            Test 1: <code>config_edit_channel</code> calls <code>views.open</code> with correct <code>trigger_id</code>, <code>callback_id</code>, <code>private_metadata</code>.
+            Test 2: unknown <code>action_id</code> acks 200 without calling <code>views.open</code>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run tests to verify 2 new ones fail</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/interactions.test.js</span>
+            <div class="step-expected"><span class="fail">2 new tests fail</span> &mdash; stub just acks empty, never calls views.open</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Implement <code>handleConfigEditAction</code> in src/interactions.js</strong>
+            DB lookup for channel row, build modal with 2 <code>plain_text_input</code> blocks, call <code>_apiClientFactory(token).views.open()</code>, swallow errors, <code>ackEmpty</code>.
+            <details>
+              <summary>Show modal structure</summary>
+              <div>const view = {
+  type: 'modal',
+  callback_id: 'config_edit_channel',
+  private_metadata: JSON.stringify({ workspaceId: workspace.team_id, channelId }),
+  title: { type: 'plain_text', text: 'Edit Channel Schedule' },
+  submit: { type: 'plain_text', text: 'Save' },
+  close:  { type: 'plain_text', text: 'Cancel' },
+  blocks: [
+    { type: 'section', text: { type: 'mrkdwn', text: `*${label}*` } },
+    { type: 'input', block_id: 'digest_schedule_block', optional: true,
+      label: { type: 'plain_text', text: 'Weekly digest schedule' },
+      element: { type: 'plain_text_input',
+        action_id: 'digest_schedule_input',
+        initial_value: row?.digest_schedule || '' } },
+    { type: 'input', block_id: 'daily_schedule_block', optional: true,
+      label: { type: 'plain_text', text: 'Daily digest schedule' },
+      element: { type: 'plain_text_input',
+        action_id: 'daily_schedule_input',
+        initial_value: row?.daily_digest_schedule || '' } }
+  ]
+};</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run all 8 interaction tests</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/interactions.test.js</span>
+            <div class="step-expected"><span class="ok">8 pass</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run full suite (286 tests)</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+            <div class="step-expected"><span class="ok">286 pass, 0 fail</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Commit</strong>
+            <span class="step-cmd">git commit -m "feat: add block_actions handler to interactions.js refs: #27"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task 4 -->
+  <div class="task-card" id="task-4">
+    <div class="task-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+      <div class="task-number">4</div>
+      <div class="task-title">view_submission handler &mdash; validate, save, reschedule</div>
+      <div class="task-meta">
+        <span class="badge badge-mod">modify</span>
+        <span class="files-badge">interactions.js &bull; interactions.test.js</span>
+        <span class="badge badge-todo">Todo</span>
+        <span class="toggle-icon">&#9660;</span>
+      </div>
+    </div>
+    <div class="task-body">
+      <div class="file-tags">
+        <span class="file-tag modify">modify: src/interactions.js</span>
+        <span class="file-tag modify">modify: test/interactions.test.js</span>
+      </div>
+
+      <div class="dep-note">&#9432; Depends on Tasks 1 and 2</div>
+
+      <div class="callout">
+        <strong>Validation:</strong> <code>scheduleStringToCron()</code> throws on invalid input. Catch per-field and accumulate errors into an object. Return <code>{response_action:'errors', errors}</code> to surface inline in the Slack modal without closing it.
+      </div>
+
+      <p class="section-label">Steps (4 tests: 286 &rarr; 290)</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Append 4 view_submission tests to test/interactions.test.js</strong>
+            Test 1: valid schedules &rarr; DB updated + onReschedule called + 200 empty.
+            Test 2: invalid schedule &rarr; <code>response_action:'errors'</code>, DB unchanged.
+            Test 3: blank schedules &rarr; DB stores <code>null</code>.
+            Test 4: unknown <code>callback_id</code> &rarr; 200 empty ack.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run tests to verify 4 new ones fail</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/interactions.test.js</span>
+            <div class="step-expected"><span class="fail">4 new tests fail</span> &mdash; stub always acks empty</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Implement <code>handleConfigEditSubmit</code> in src/interactions.js</strong>
+            Parse <code>private_metadata</code>, extract values from <code>view.state.values</code>, validate via <code>scheduleStringToCron</code>, return errors or call <code>updateChannelSchedule</code> + <code>onReschedule</code>.
+            <details>
+              <summary>Show validation logic</summary>
+              <div>const errors = {};
+if (digestSchedule) {
+  try { scheduleStringToCron(digestSchedule); } catch {
+    errors.digest_schedule_block =
+      'Invalid schedule format. Use e.g. "sunday 18:00" or leave blank to disable.';
+  }
+}
+if (dailySchedule) {
+  try { scheduleStringToCron(dailySchedule); } catch {
+    errors.daily_schedule_block =
+      'Invalid schedule format. Use e.g. "weekdays 09:00" or leave blank to disable.';
+  }
+}
+if (Object.keys(errors).length > 0) {
+  ackJson(res, { response_action: 'errors', errors });
+  return;
+}</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run all 12 interaction tests</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/interactions.test.js</span>
+            <div class="step-expected"><span class="ok">12 pass</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run full suite (290 tests)</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+            <div class="step-expected"><span class="ok">290 pass, 0 fail</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Commit</strong>
+            <span class="step-cmd">git commit -m "feat: add view_submission handler to interactions.js refs: #27"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task 5 -->
+  <div class="task-card" id="task-5">
+    <div class="task-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+      <div class="task-number">5</div>
+      <div class="task-title">Add "Edit" button to /calendar config</div>
+      <div class="task-meta">
+        <span class="badge badge-mod">modify</span>
+        <span class="files-badge">commands.js &bull; commands.test.js</span>
+        <span class="badge badge-todo">Todo</span>
+        <span class="toggle-icon">&#9660;</span>
+      </div>
+    </div>
+    <div class="task-body">
+      <div class="file-tags">
+        <span class="file-tag modify">modify: src/commands.js</span>
+        <span class="file-tag modify">modify: test/commands.test.js</span>
+      </div>
+
+      <div class="callout">
+        The <code>accessory</code> property on a <code>section</code> block places an inline button to the right of the text. The <code>value</code> carries the channel ID so the interactions handler can look it up.
+      </div>
+
+      <p class="section-label">Steps (1 test: 290 &rarr; 291)</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Append 1 test to test/commands.test.js</strong>
+            Assert that the <code>/calendar config</code> response includes a section block with <code>accessory.type === 'button'</code>, <code>action_id === 'config_edit_channel'</code>, <code>value === channelId</code>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run test to verify it fails</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/commands.test.js</span>
+            <div class="step-expected"><span class="fail">1 new test fails</span> &mdash; no <code>accessory</code> on section blocks yet</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add <code>accessory</code> to section block in <code>subConfig</code> in src/commands.js</strong>
+            <details>
+              <summary>Show change</summary>
+              <div>// Add accessory property to the section block inside the for loop:
+accessory: {
+  type: 'button',
+  text: { type: 'plain_text', text: 'Edit' },
+  action_id: 'config_edit_channel',
+  value: ch.id
+}</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run all commands tests</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/commands.test.js</span>
+            <div class="step-expected"><span class="ok">all pass</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run full suite (291 tests)</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+            <div class="step-expected"><span class="ok">291 pass, 0 fail</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Commit</strong>
+            <span class="step-cmd">git commit -m "feat: add Edit button to /calendar config subcommand refs: #27"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task 6 -->
+  <div class="task-card" id="task-6">
+    <div class="task-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+      <div class="task-number">6</div>
+      <div class="task-title">Wire interactions handler into server.js</div>
+      <div class="task-meta">
+        <span class="badge badge-mod">modify</span>
+        <span class="files-badge">server.js</span>
+        <span class="badge badge-todo">Todo</span>
+        <span class="toggle-icon">&#9660;</span>
+      </div>
+    </div>
+    <div class="task-body">
+      <div class="file-tags">
+        <span class="file-tag modify">modify: src/server.js</span>
+      </div>
+
+      <div class="dep-note">&#9432; Depends on all prior tasks</div>
+
+      <div class="callout">
+        No new tests &mdash; covered by existing test suite. The <code>onReschedule</code> callback mirrors the <code>onInstall</code> and <code>onUninstall</code> patterns already in server.js.
+      </div>
+
+      <p class="section-label">4 changes, no new tests, 1 commit</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add import to src/server.js</strong>
+            <span class="step-cmd">const { validateInteractionsEnvVars, handleInteractions } = require('./interactions.js');</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add <code>validateInteractionsEnvVars()</code> call in <code>start()</code></strong>
+            After <code>validateSlackCommandsEnvVars();</code>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add <code>onReschedule</code> callback</strong>
+            After the <code>onUninstall</code> definition:
+            <details>
+              <summary>Show code</summary>
+              <div>const onReschedule = async (workspaceId) => {
+  await registry.scheduleWorkspace(db, workspaceId, dryRun);
+};</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Add <code>handleInteractions</code> route in HTTP handler</strong>
+            After the <code>handleSlashCommand</code> branch:
+            <details>
+              <summary>Show code</summary>
+              <div>} else if (await handleInteractions(db, req, res, onReschedule)) {
+  // handled by interactions.js
+} else {
+  res.writeHead(404);
+  res.end();
+}</div>
+            </details>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Run full suite (291 tests)</strong>
+            <span class="step-cmd">NODE_ENV=test node --test test/*.test.js</span>
+            <div class="step-expected"><span class="ok">291 pass, 0 fail</span></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-check"></div>
+          <div class="step-text">
+            <strong>Commit</strong>
+            <span class="step-cmd">git commit -m "feat: wire interactions handler into server.js refs: #27"</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Expand all cards by default
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.style.display = 'block';
+  });
+</script>
+</body>
+</html>
